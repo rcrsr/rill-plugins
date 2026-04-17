@@ -34,6 +34,35 @@ This skill includes templates and examples. Use them as structural guides for ou
 
 Read the relevant example before implementing. Use `simple-summarizer` as a model for single-script packages. Use `doc-search-pipeline` as a model for multi-script packages with custom extensions.
 
+## Phase 0: Verify Prerequisites
+
+Before any other work, verify the environment meets rill's requirements. If any check fails, halt and instruct the user to resolve it before re-running the skill. Do NOT attempt to auto-install system prerequisites.
+
+1. **Platform check — Linux or WSL.** Run `uname -a`. The rill runtime targets Linux (including WSL2 on Windows). If the output shows `Darwin` (macOS) or a non-Linux kernel, warn the user that rill is not officially supported on their platform and ask whether to continue at their own risk. If the output contains `Microsoft` or `WSL`, confirm WSL2 is in use.
+
+2. **Node.js check.** Run `node --version`. Require Node.js 20 or newer. If missing or below 20, halt and tell the user to install Node 20+ (recommend `nvm install 20`).
+
+3. **Global rill-cli check.** Run `which rill-run rill-check rill-build 2>/dev/null && npm ls -g @rcrsr/rill-cli 2>/dev/null`. If `@rcrsr/rill-cli` is not globally installed, halt and instruct the user:
+   ```
+   npm install -g @rcrsr/rill-cli
+   ```
+   The global install provides `rill-run`, `rill-check`, and `rill-build` on PATH. Local `npx` fallbacks work but the skill assumes global availability for validation steps in Phase 7e.
+
+4. **npm check.** Run `npm --version`. If missing, halt and instruct the user to install npm (usually bundled with Node).
+
+Report each check's result in a single block:
+
+```
+PREREQUISITE CHECKS
+-------------------
+Platform:       [Linux / WSL2 / other]  -> [PASS / FAIL]
+Node.js:        [version]                -> [PASS / FAIL]
+npm:            [version]                -> [PASS / FAIL]
+@rcrsr/rill-cli: [version or missing]    -> [PASS / FAIL]
+```
+
+Proceed to Phase 1 only if all checks pass.
+
 ## Phase 1: Fetch Documentation
 
 Fetch the reference docs before gathering requirements. The rill language reference and extension index provide context for identifying capabilities, asking informed clarifying questions, and making design decisions in later phases.
@@ -491,6 +520,8 @@ After implementation:
 5. Suggest next steps (testing, deployment, extensions)
 6. Show the run command: `npm run dev`
 7. If HTTP deployment is configured, show the compile and serve commands: `npm run compile && npm run serve`
+8. **Direct the user to fill in `.env`** with the credentials from the Provisioning Checklist before running. State explicitly: "Open `.env` and populate every variable with real values. The package will fail at runtime if any required credential is missing or placeholder."
+9. **Suggest running the package next** so the skill can verify functionality. Phrase it as: "Once `.env` is populated, prompt me to run the package (e.g., `run the package`). I will execute it, observe the output, and help diagnose any runtime issues before we call this complete."
 
 Ask the user if they want changes to any part of the implementation.
 
