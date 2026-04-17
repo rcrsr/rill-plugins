@@ -89,7 +89,8 @@ Store all outputs. Pass selectively to each agent:
 | Phase 4 (identify extensions) | No | Yes (5KB) | No | No |
 | Step 7b (rill-config.json) | No | No | No | Yes, via deep link from index |
 | Step 7c (custom extensions) | No | No | No | No |
-| Step 7d (rill scripts) | Yes (29KB) | No | No | No |
+| Step 7d (prompt files) | No | No | No | Yes, fetch `prompt-md` docs |
+| Step 7e (rill scripts) | Yes (29KB) | No | No | No |
 | Step 7a (server.js, bundling) | No | No | Yes | No |
 
 When including docs in an agent prompt, add: "The rill documentation is included below. Do NOT fetch it again."
@@ -210,6 +211,10 @@ Key rill patterns:
 
 ALL extensions — bundled, vendor, and custom — MUST appear in `extensions.mounts` in `rill-config.json`. Bundled extensions use `@rcrsr/rill/ext/<name>` as the mount path (listed in the "Import" column of the extension index). Vendor extensions use their npm package name. Custom extensions use `./dist/extensions/<file>.js`.
 
+### Prompt externalization (mandatory when LLMs are used)
+
+If the package calls any LLM extension (`rill-ext-anthropic`, `rill-ext-openai`, `rill-ext-gemini`, etc.), the extension plan MUST include `@rcrsr/rill-ext-prompt-md` mounted as `prompt` with `basePath: "./prompts"`. Prompts are never hard-coded in rill scripts. See Phase 5, Design Principle 5 for rationale.
+
 ## Phase 5: Design the Data Flow
 
 Before writing any code, design the rill pipeline as a blueprint. This separates "what operators and patterns to use" from "write correct syntax." The skill executor (you) does this step directly — do NOT delegate to an agent.
@@ -290,7 +295,29 @@ Using the extension plan from Phase 4 and the rill language reference from Phase
 
    Do NOT use `$closure.^input` as the schema — the `generate` function does not accept structural types.
 
-5. **Put instructions in the message prompt, not the system prompt.** The `system` field in rill-config.json is unreliable across providers and models. Some models ignore or deprioritize system prompts. Place all task instructions, formatting rules, and constraints directly in the message prompt passed to `generate` or `message`. This produces consistent results regardless of provider. Reserve the config `system` field for identity-level context only (e.g., "You are a technical editor"), not for output instructions.
+5. **Externalize prompts into `.prompt.md` files via `@rcrsr/rill-ext-prompt-md`.** Never hard-code prompt strings in rill scripts. Every prompt lives in its own `prompts/<name>.prompt.md` file with YAML frontmatter declaring `description`, `params`, and `output` (`string` or `list`). Scripts invoke prompts by resolution name through the `prompt` namespace. This yields four benefits: prompts are editable without touching scripts, `^hash` reflection detects prompt drift between runs, `output: list` with `@@ role` markers produces provider-agnostic `[{role, content}]` dicts consumable by any LLM extension's `messages()` function, and task instructions stay separated from pipeline logic.
+
+   ```rill
+   # In agents/research.prompt.md:
+   # ---
+   # description: Answer a research question with cited sources.
+   # params:
+   #   - question: string
+   # output: list
+   # ---
+   # @@ system
+   # You are a research assistant. Provide accurate, well-cited answers.
+   # @@ user
+   # {question}
+
+   # In the rill script:
+   $prompt.agents_research($question) => $messages
+   $ai.messages($messages, dict[max_tokens: 1024])() -> .content => $answer
+   ```
+
+   Resolution rule: file path relative to `basePath` becomes the callable name with `/` replaced by `_`. `agents/research.prompt.md` → `$prompt.agents_research`.
+
+   **Corollary — do not rely on the system prompt in rill-config.json.** The `system` field is unreliable across providers and models. Place task instructions inside the `.prompt.md` file using `@@ system` sections, not in the config `system` field. Reserve the config `system` field for identity-level context only (e.g., "You are a technical editor"), if at all.
 
 6. **Put static data in rill-config.json, not in scripts.** Lists of URLs, API endpoints, constants, and resource identifiers belong in `extensions.config` and are accessed via extension functions or config values. Scripts should read configuration, not hard-code it. This keeps scripts reusable across different configurations.
 
@@ -372,7 +399,8 @@ Before moving to Phase 6, verify the blueprint covers:
 - [ ] Every intermediate value has a named capture (`=> $name`) only if reused
 - [ ] `map` is used for pure transforms, `each` for side effects or sequential I/O
 - [ ] LLM calls use `generate` with legacy dict schema when output shape is known; fall back to `message` for free-form text
-- [ ] Task instructions live in the message prompt, not in the config `system` field
+- [ ] All LLM prompts live in `prompts/*.prompt.md` files loaded via `@rcrsr/rill-ext-prompt-md`; no prompt strings hard-coded in scripts
+- [ ] Task instructions live in the `.prompt.md` body (or `@@ system` section), not in the config `system` field
 - [ ] Script is wrapped in a named typed closure, fully decorated (`^("desc")` on closure and every param)
 - [ ] The final expression is the return value (structured data, no `log`)
 - [ ] `log` is used only for operational messages (progress, warnings), never for results
@@ -482,7 +510,22 @@ Use the Agent tool with `subagent_type: "rill-engineer"` for each custom extensi
 
 After all custom extensions are written, run `npm run check` to verify TypeScript compilation. Fix any type errors before proceeding.
 
-### Step 7d: Rill Scripts
+### Step 7d: Prompt Files
+
+If the package uses any LLM extension, write the `.prompt.md` files before the rill scripts. Scripts reference prompts by resolution name, so the prompt set must exist first.
+
+For each prompt identified in the pipeline blueprint, use the Agent tool with `subagent_type: "rill-engineer"` and include in the prompt:
+- The purpose of the prompt (what the LLM call should accomplish)
+- The parameters the script will pass (names and types)
+- Whether to use `output: string` (single-turn rendered string) or `output: list` (role-tagged messages with `@@ system`/`@@ user` markers)
+- Instruction to write each file under `prompts/` with a descriptive path (e.g., `prompts/summarize.prompt.md`, `prompts/agents/research.prompt.md`)
+- Instruction to write a complete YAML frontmatter block with `description`, `params`, and `output` fields
+- Instruction to use `{param_name}` interpolation for scalar params only (string, num, bool); do NOT interpolate dicts or lists
+- Instruction to prefer `output: list` with `@@ system` and `@@ user` sections for any LLM call, because the resulting `[{role, content}]` shape passes directly into `messages()` on any provider
+
+Skip this step if no LLM extensions are used.
+
+### Step 7e: Rill Scripts
 
 Use the Agent tool with `subagent_type: "rill-engineer"` for each rill script. Include in the prompt:
 - The pipeline blueprint from Phase 5 for this specific script (the agent implements the design, not invents one)
@@ -495,11 +538,11 @@ Use the Agent tool with `subagent_type: "rill-engineer"` for each rill script. I
 
 For projects with multiple scripts, you MAY launch multiple `rill-engineer` agents in parallel for independent scripts. Scripts that depend on each other must be implemented sequentially.
 
-### Step 7e: Validate Rill Scripts
+### Step 7f: Validate Rill Scripts
 
 After all rill scripts are written, run `npx rill-check <file>` on each `.rill` file. If errors are found, fix them by re-invoking the rill-engineer agent with the error message and script content. Repeat until all scripts pass validation. Do NOT proceed to Phase 8 with failing scripts.
 
-### Step 7f: Entry Point
+### Step 7g: Entry Point
 
 If the package has multiple scripts, use the Agent tool with `subagent_type: "rill-engineer"` to create the main entry script that orchestrates them. Include the full list of scripts and their purposes.
 

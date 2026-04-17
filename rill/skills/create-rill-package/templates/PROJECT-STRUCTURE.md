@@ -9,6 +9,9 @@ package-name/
   scripts/                     # Additional rill scripts (if multiple)
     step-one.rill
     step-two.rill
+  prompts/                     # LLM prompts as .prompt.md files (required when LLMs are used)
+    summarize.prompt.md
+    agents/research.prompt.md
   extensions/                  # Custom TypeScript extensions (if any)
     ext-name.ts
   .env                         # Environment variables (secrets, API keys)
@@ -22,6 +25,7 @@ package-name/
 | `rill-config.json` | Declares extension mounts (namespace -> package), per-namespace config, and package metadata (`name`, `version`). |
 | `main.rill` | Entry point. Single-script packages put all logic here. Multi-script packages use this as orchestrator. |
 | `scripts/*.rill` | Separate scripts for distinct pipeline stages. Loaded via `use<module:name>`. |
+| `prompts/**/*.prompt.md` | LLM prompts with YAML frontmatter. Loaded by `@rcrsr/rill-ext-prompt-md`. Required whenever any LLM extension is mounted. |
 | `extensions/*.ts` | Custom TypeScript extensions for capabilities not covered by built-in rill-ext packages. |
 | `server.js` | HTTP server using `@rcrsr/rill-agent`. Loads the build and serves the agent over HTTP. Optional. |
 | `.env` | API keys and secrets. Referenced in rill-config.json as `${VAR_NAME}`. Never committed. |
