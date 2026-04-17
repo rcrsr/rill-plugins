@@ -2,6 +2,31 @@
 
 This guide walks you from zero to a working rill package using the `/rill:create-rill-package` skill. Follow the phases in order.
 
+## What Is a Rill Package?
+
+A rill package is an agent in a portable, runnable form. It bundles everything the agent needs in one directory: the rill scripts that define the pipeline, `rill-config.json` declaring extensions and configuration, any custom TypeScript extensions, and the `.env` referencing required credentials.
+
+The same package runs in three contexts without code changes:
+
+| Context | Command | What it uses |
+|---------|---------|--------------|
+| Local development | `npm run dev` (`rill-run .`) | Reads the package directory directly |
+| HTTP agent server | `npm run build && npm run serve` | `rill-build` emits a self-contained bundle to `build/`, then `@rcrsr/rill-agent-http` serves it over HTTP (`POST /agents/:name/run`) |
+| Azure AI Foundry | Deploy the `build/` output with `@rcrsr/rill-agent-foundry` | Same bundle, wrapped in the Foundry Responses API harness |
+
+### Relationship to `rill-agent`
+
+[`rill-agent`](https://github.com/rcrsr/rill-agent) is the runtime that hosts a built package as an HTTP service. It contributes no logic of its own. It loads the package manifest, calls the entry-point closure per HTTP request, and returns the structured result. The package encompasses all agent behavior. `rill-agent` provides the transport.
+
+This separation matters because:
+
+- **Portability**: the same package runs locally, on any HTTP host, or in Azure Foundry. No code branches per environment.
+- **Testability**: `rill-run` exercises the full agent without standing up a server.
+- **Isolation**: credentials stay in `.env`, never in scripts. Static configuration stays in `rill-config.json`, never hard-coded.
+- **Composition**: one agent can call another via `@rcrsr/rill-agent-ext-ahi`, which registers `ahi::<agentName>` functions in the rill runtime. Co-located agents skip HTTP; remote agents resolve through static URLs.
+
+The skill in this plugin generates the package. `rill-agent` (separate repo) runs it in production. You move from one to the other by running `npm run build` and pointing a server at the output.
+
 ## 1. Prerequisites
 
 The skill halts if any of these are missing.
