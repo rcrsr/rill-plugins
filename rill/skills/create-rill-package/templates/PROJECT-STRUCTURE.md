@@ -2,7 +2,7 @@
 
 ```
 package-name/
-  package.json                 # Dependencies, build/dev/compile/serve targets
+  package.json                 # Dependencies, dev/build/serve targets
   rill-config.json             # Extension mounts and configuration
   main.rill                    # Entry point script
   server.js                    # HTTP agent server (optional, for deployment)
@@ -18,7 +18,7 @@ package-name/
 
 | File | Purpose |
 |------|---------|
-| `package.json` | Declares dependencies and npm script targets: `dev`, `build`, `compile`, `serve`. |
+| `package.json` | Declares dependencies and npm script targets: `dev`, `build`, `serve`. |
 | `rill-config.json` | Declares extension mounts (namespace -> package), per-namespace config, and package metadata (`name`, `version`). |
 | `main.rill` | Entry point. Single-script packages put all logic here. Multi-script packages use this as orchestrator. |
 | `scripts/*.rill` | Separate scripts for distinct pipeline stages. Loaded via `use<module:name>`. |
@@ -31,10 +31,10 @@ package-name/
 | Target | Command | Purpose |
 |--------|---------|---------|
 | `dev` | `rill-run .` | Run the package in development mode. Replaces `run.sh`. |
-| `build` | `tsc` | Compile custom TypeScript extensions to `dist/`. Only if extensions exist. |
+| `predev` | `tsc` | Auto-runs before `dev` to compile TypeScript extensions to `dist/`. Only if extensions exist. |
 | `check` | `tsc --noEmit` | Type-check extensions without emitting. Only if extensions exist. |
-| `compile` | `tsc && rill-build . --output build` | Build extensions and build the package for deployment. |
-| `serve` | `node server.js` | Start the HTTP agent server from the build. Requires `server.js`. |
+| `build` | `tsc && rill-build . --output build` | Compile extensions and bundle the package for deployment. |
+| `serve` | `node server.js` | Start the HTTP agent server from the bundled output. Requires `server.js`. |
 
 ## Conventions
 

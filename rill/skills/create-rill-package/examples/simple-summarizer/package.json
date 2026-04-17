@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "rill-run .",
-    "compile": "rill-build . --output build"
+    "build": "rill-build . --output build"
   },
   "dependencies": {
     "@rcrsr/rill": "latest",

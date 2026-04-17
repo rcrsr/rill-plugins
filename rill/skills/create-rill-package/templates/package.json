@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc",
     "check": "tsc --noEmit",
+    "predev": "tsc",
     "dev": "rill-run .",
-    "compile": "tsc && rill-build . --output build",
+    "build": "tsc && rill-build . --output build",
     "serve": "node server.js"
   },
   "dependencies": {

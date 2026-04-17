@@ -438,8 +438,8 @@ Create the package directory structure and Node.js/TypeScript environment. Read 
    - Always include `@rcrsr/rill-cli` in `devDependencies` (provides `rill-run`, `rill-check`, `rill-build`)
    - Always include `@rcrsr/rill-agent` in `devDependencies` (provides bundling and HTTP serving)
    - Always include the `dev` script (`rill-run .`)
-   - If custom TypeScript extensions exist: include `build`, `check`, and `compile` scripts, plus `typescript` and `@types/node` in `devDependencies`
-   - If no custom TypeScript extensions exist: omit `build`, `check` scripts, set `compile` to `rill-build . --output build` (no `tsc` prefix), and omit `typescript` and `@types/node` from `devDependencies`
+   - If custom TypeScript extensions exist: include `predev` (`tsc`), `check` (`tsc --noEmit`), and `build` (`tsc && rill-build . --output build`) scripts, plus `typescript` and `@types/node` in `devDependencies`
+   - If no custom TypeScript extensions exist: omit `predev` and `check` scripts, set `build` to `rill-build . --output build` (no `tsc` prefix), and omit `typescript` and `@types/node` from `devDependencies`
    - Include the `serve` script (`node server.js`) if the user wants HTTP deployment
 
 3. **Generate `tsconfig.json`** from `${CLAUDE_SKILL_DIR}/templates/tsconfig.json` (only if custom extensions exist):
@@ -519,7 +519,7 @@ After implementation:
 4. Note any assumptions made during implementation
 5. Suggest next steps (testing, deployment, extensions)
 6. Show the run command: `npm run dev`
-7. If HTTP deployment is configured, show the compile and serve commands: `npm run compile && npm run serve`
+7. If HTTP deployment is configured, show the build and serve commands: `npm run build && npm run serve`
 8. **Direct the user to fill in `.env`** with the credentials from the Provisioning Checklist before running. State explicitly: "Open `.env` and populate every variable with real values. The package will fail at runtime if any required credential is missing or placeholder."
 9. **Suggest running the package next** so the skill can verify functionality. Phrase it as: "Once `.env` is populated, prompt me to run the package (e.g., `run the package`). I will execute it, observe the output, and help diagnose any runtime issues before we call this complete."
 
