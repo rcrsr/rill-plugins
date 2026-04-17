@@ -1,0 +1,52 @@
+# Document ingestion pipeline
+# Fetches pages, generates embeddings, stores in vector DB and S3
+# Extensions: crawler (custom), ai (OpenAI), vectors (Qdrant), fs (S3)
+
+use<ext:crawler> => $crawler
+use<ext:ai> => $ai
+use<ext:vectors> => $db
+use<ext:fs> => $storage
+
+# Entry point: ingest URLs into vector DB and S3
+^("Ingest documents from URLs") |^("URLs to crawl") urls: list| {
+
+  # Validate input
+  $urls -> assert !.empty "URL list cannot be empty"
+
+  "Fetching {$urls -> .len} pages..." -> log
+
+  # Fetch all pages in parallel
+  $urls -> $crawler.fetch_batch => $pages
+
+  "Embedding and storing {$pages -> .len} pages..." -> log
+
+  # Process each page: embed and store
+  $pages -> each {
+    $ => $page
+
+    # Generate embedding from page text
+    $ai.embed($page.text) => $vec
+
+    # Create document ID from URL
+    $page.url -> .replace_all("[^a-z0-9]", "-") => $doc_id
+
+    # Store raw text in S3
+    $storage.write("/docs/{$doc_id}.txt", $page.text)
+
+    # Store embedding in vector DB with metadata
+    $db.upsert($doc_id, $vec, dict[
+      url: $page.url,
+      title: $page.title,
+      text_len: $page.text -> .len,
+    ])
+
+    dict[id: $doc_id, url: $page.url, title: $page.title]
+  } => $indexed
+
+  # Return structured result
+  dict[
+    indexed: $indexed -> .len,
+    documents: $indexed,
+  ]
+
+} => $ingest

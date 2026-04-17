@@ -1,0 +1,23 @@
+# Simple text summarizer
+# Extensions: ai (Anthropic LLM)
+
+use<ext:ai> => $ai
+
+# Entry point: takes text input, returns bullet-point summary
+^("Summarize input text into bullet points") |^("Text to summarize") input: string| {
+
+  # Validate input
+  $input -> assert !.empty "Input cannot be empty"
+
+  "Summarizing {$input -> .len} characters..." -> log
+
+  # Summarize with LLM
+  $ai.message("Summarize the following text:\n\n{$input}")() => $result
+
+  # Return structured result
+  dict[
+    summary: $result.content,
+    usage: $result.usage,
+  ]
+
+} => $summarize

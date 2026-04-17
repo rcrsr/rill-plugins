@@ -1,0 +1,24 @@
+{
+  "name": "doc-search-pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "check": "tsc --noEmit",
+    "dev": "rill-run .",
+    "compile": "tsc && rill-build . --output build"
+  },
+  "dependencies": {
+    "@rcrsr/rill": "latest",
+    "@rcrsr/rill-ext-openai": "latest",
+    "@rcrsr/rill-ext-qdrant": "latest",
+    "@rcrsr/rill-ext-fs-s3": "latest"
+  },
+  "devDependencies": {
+    "@rcrsr/rill-cli": "latest",
+    "@rcrsr/rill-agent": "latest",
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "simple-summarizer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "rill-run .",
+    "compile": "rill-build . --output build"
+  },
+  "dependencies": {
+    "@rcrsr/rill": "latest",
+    "@rcrsr/rill-ext-anthropic": "latest"
+  },
+  "devDependencies": {
+    "@rcrsr/rill-cli": "latest",
+    "@rcrsr/rill-agent": "latest"
+  }
+}

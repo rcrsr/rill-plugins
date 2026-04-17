@@ -1,0 +1,46 @@
+{
+  "name": "doc-search-pipeline",
+  "version": "0.1.0",
+  "main": "main.rill:dispatch",
+  "extensions": {
+    "mounts": {
+      "ai": "@rcrsr/rill-ext-openai",
+      "vectors": "@rcrsr/rill-ext-qdrant",
+      "fs": "@rcrsr/rill-ext-fs-s3",
+      "crawler": "./dist/extensions/ext-crawler.js"
+    },
+    "config": {
+      "ai": {
+        "api_key": "${OPENAI_API_KEY}",
+        "model": "gpt-4o",
+        "max_tokens": 2048,
+        "embed_model": "text-embedding-3-small"
+      },
+      "vectors": {
+        "url": "http://localhost:6333",
+        "collection": "documents",
+        "dimensions": 1536,
+        "distance": "cosine"
+      },
+      "fs": {
+        "region": "us-east-1",
+        "credentials": {
+          "accessKeyId": "${AWS_ACCESS_KEY_ID}",
+          "secretAccessKey": "${AWS_SECRET_ACCESS_KEY}"
+        },
+        "mounts": {
+          "docs": {
+            "mode": "read-write",
+            "bucket": "my-docs-bucket",
+            "prefix": "documents/"
+          }
+        }
+      },
+      "crawler": {
+        "max_pages": 100,
+        "timeout": 30000,
+        "user_agent": "RillDocCrawler/1.0"
+      }
+    }
+  }
+}

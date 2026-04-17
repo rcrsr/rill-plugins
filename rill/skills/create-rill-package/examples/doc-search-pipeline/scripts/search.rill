@@ -1,0 +1,63 @@
+# Semantic search with LLM-generated answer
+# Takes a query string, finds relevant docs, generates answer
+# Extensions: ai (OpenAI), vectors (Qdrant), fs (S3)
+
+use<ext:ai> => $ai
+use<ext:vectors> => $db
+use<ext:fs> => $storage
+
+# Entry point: search documents and generate answer
+^("Semantic document search") |^("Search query") query: string| {
+
+  # Validate query
+  $query -> assert !.empty "Query cannot be empty"
+
+  "Searching for: {$query}" -> log
+
+  # Embed the query
+  $ai.embed($query) => $query_vec
+
+  # Search for similar documents
+  $db.search($query_vec, dict[k: 5, score_threshold: 0.7]) => $results
+
+  # Handle no results
+  $results -> .empty ? (dict[answer: "No relevant documents found.", sources: list[]] -> return)
+
+  "Found {$results -> .len} matching documents, loading full text..." -> log
+
+  # Load full text for top results from S3
+  $results -> map {
+    $ => $hit
+    $storage.read("/docs/{$hit.id}.txt") => $text
+    dict[
+      id: $hit.id,
+      score: $hit.score,
+      url: $hit.metadata.url,
+      title: $hit.metadata.title,
+      text: $text,
+    ]
+  } => $sources
+
+  # Build context from sources
+  $sources
+    -> map { "## {$.title}\nURL: {$.url}\n\n{$.text}" }
+    -> .join("\n\n---\n\n")
+    => $context
+
+  # Generate answer using retrieved context
+  $ai.message("""
+  Based on the following documents, answer the question: {$query}
+
+  {$context}
+
+  Cite sources by title when referencing information.
+  """)() => $response
+
+  # Return structured result
+  dict[
+    answer: $response.content,
+    sources: $sources -> map { dict[url: $.url, title: $.title, score: $.score] },
+    usage: $response.usage,
+  ]
+
+} => $search

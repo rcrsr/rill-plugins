@@ -1,0 +1,22 @@
+{
+  "name": "PROJECT_NAME",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "check": "tsc --noEmit",
+    "dev": "rill-run .",
+    "compile": "tsc && rill-build . --output build",
+    "serve": "node server.js"
+  },
+  "dependencies": {
+    "@rcrsr/rill": "latest"
+  },
+  "devDependencies": {
+    "@rcrsr/rill-cli": "latest",
+    "@rcrsr/rill-agent": "latest",
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
+}

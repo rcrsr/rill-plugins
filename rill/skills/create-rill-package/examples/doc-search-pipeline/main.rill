@@ -1,0 +1,16 @@
+# Document search pipeline - entry point
+# Dispatches to ingest or search based on action input
+
+use<module:ingest> => $ingest
+use<module:search> => $search
+
+# Entry point: routes to ingest or search handler
+^("Document pipeline dispatcher") |^("Action") action: string| {
+
+  $action -> dict[
+    ingest: { $ingest($urls) },
+    search: { $search($query) },
+  ] ?? { error "Unknown action: {$action}. Use 'ingest' or 'search'." }
+  -> |handler| { $handler() }
+
+} => $dispatch
