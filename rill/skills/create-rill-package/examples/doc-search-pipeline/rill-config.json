@@ -7,6 +7,7 @@
       "ai": "@rcrsr/rill-ext-openai",
       "vectors": "@rcrsr/rill-ext-qdrant",
       "fs": "@rcrsr/rill-ext-fs-s3",
+      "prompt": "@rcrsr/rill-ext-prompt-md",
       "crawler": "./dist/extensions/ext-crawler.js"
     },
     "config": {
@@ -40,6 +41,9 @@
         "max_pages": 100,
         "timeout": 30000,
         "user_agent": "RillDocCrawler/1.0"
+      },
+      "prompt": {
+        "basePath": "./prompts"
       }
     }
   }

@@ -4,14 +4,17 @@
   "main": "main.rill:summarize",
   "extensions": {
     "mounts": {
-      "ai": "@rcrsr/rill-ext-anthropic"
+      "ai": "@rcrsr/rill-ext-anthropic",
+      "prompt": "@rcrsr/rill-ext-prompt-md"
     },
     "config": {
       "ai": {
         "api_key": "${ANTHROPIC_API_KEY}",
         "model": "claude-sonnet-4-5-20250929",
-        "max_tokens": 1024,
-        "system": "You are a concise summarizer. Produce 3-5 bullet points."
+        "max_tokens": 1024
+      },
+      "prompt": {
+        "basePath": "./prompts"
       }
     }
   }

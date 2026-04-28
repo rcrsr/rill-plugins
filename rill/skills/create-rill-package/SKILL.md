@@ -3,12 +3,13 @@ name: create-rill-package
 description: Create a complete rill package from a specification document or description. Analyzes requirements, identifies extensions, designs custom extensions, and implements all rill scripts with matching rill-config.json.
 user-invocable: true
 argument-hint: "[spec-file-or-description]"
-allowed-tools: Read,Write,Edit,Glob,Grep,Bash,WebFetch,Agent,AskUserQuestion
 ---
 
 # Create Rill Package
 
-You are building a complete rill package from a user specification. Follow these phases in order. Do NOT skip phases or combine them.
+You orchestrate creation of a complete rill package. Your job is sequencing — design decisions belong to the `rill-architect` agent, implementation to `rill-engineer`, and validation to `rill-reviewer`. Follow the phases in order. Do NOT skip phases or combine them.
+
+See `rill/ARCHITECTURE.md` for the agent split, blueprint schema, and revision history.
 
 ## User Responsibility for External Vendors
 
@@ -32,66 +33,54 @@ This skill includes templates and examples. Use them as structural guides for ou
 - `simple-summarizer/` - Single script, one built-in extension (Anthropic LLM), no custom extensions
 - `doc-search-pipeline/` - Multiple scripts, 3 built-in extensions (OpenAI, Qdrant, S3) + 1 custom extension (web crawler), with entry point dispatcher
 
-Read the relevant example before implementing. Use `simple-summarizer` as a model for single-script packages. Use `doc-search-pipeline` as a model for multi-script packages with custom extensions.
-
 ## Phase 0: Verify Prerequisites
 
 Before any other work, verify the environment meets rill's requirements. If any check fails, halt and instruct the user to resolve it before re-running the skill. Do NOT attempt to auto-install system prerequisites.
 
-1. **Platform check — Linux or WSL.** Run `uname -a`. The rill runtime targets Linux (including WSL2 on Windows). If the output shows `Darwin` (macOS) or a non-Linux kernel, warn the user that rill is not officially supported on their platform and ask whether to continue at their own risk. If the output contains `Microsoft` or `WSL`, confirm WSL2 is in use.
+1. **Platform check — Linux or WSL.** Run `uname -a`. The rill runtime targets Linux (including WSL2 on Windows). If the output shows `Darwin` (macOS) or a non-Linux kernel, warn the user that rill is not officially supported on their platform and ask whether to continue at their own risk.
 
-2. **Node.js check.** Run `node --version`. Require Node.js 20 or newer. If missing or below 20, halt and tell the user to install Node 20+ (recommend `nvm install 20`).
+2. **Node.js check.** Run `node --version`. Require Node.js 20 or newer.
 
-3. **Global rill-cli check.** Run `which rill-run rill-check rill-build 2>/dev/null && npm ls -g @rcrsr/rill-cli 2>/dev/null`. If `@rcrsr/rill-cli` is not globally installed, halt and instruct the user:
-   ```
-   npm install -g @rcrsr/rill-cli
-   ```
-   The global install provides `rill-run`, `rill-check`, and `rill-build` on PATH. Local `npx` fallbacks work but the skill assumes global availability for validation steps in Phase 7e.
+3. **Global rill-cli check.** Run `which rill-run rill-check rill-build 2>/dev/null && npm ls -g @rcrsr/rill-cli 2>/dev/null`. If `@rcrsr/rill-cli` is not globally installed, halt and instruct the user: `npm install -g @rcrsr/rill-cli`.
 
-4. **npm check.** Run `npm --version`. If missing, halt and instruct the user to install npm (usually bundled with Node).
+4. **npm check.** Run `npm --version`.
 
-Report each check's result in a single block:
+Report each check's result:
 
 ```
 PREREQUISITE CHECKS
 -------------------
-Platform:       [Linux / WSL2 / other]  -> [PASS / FAIL]
-Node.js:        [version]                -> [PASS / FAIL]
-npm:            [version]                -> [PASS / FAIL]
-@rcrsr/rill-cli: [version or missing]    -> [PASS / FAIL]
+Platform:        [Linux / WSL2 / other]  -> [PASS / FAIL]
+Node.js:         [version]                -> [PASS / FAIL]
+npm:             [version]                -> [PASS / FAIL]
+@rcrsr/rill-cli: [version or missing]     -> [PASS / FAIL]
 ```
 
 Proceed to Phase 1 only if all checks pass.
 
 ## Phase 1: Fetch Documentation
 
-Fetch the reference docs before gathering requirements. The rill language reference and extension index provide context for identifying capabilities, asking informed clarifying questions, and making design decisions in later phases.
+Fetch reference docs once. Pass them to subagents as needed; subagents do not refetch.
 
-1. **Fetch the rill language reference** (for script-writing agents):
-   ```
-   curl -sL https://raw.githubusercontent.com/rcrsr/rill/refs/heads/main/docs/ref-llm.txt
-   ```
+1. **Rill language reference:**
+   `curl -sL https://raw.githubusercontent.com/rcrsr/rill/refs/heads/main/docs/ref-llm.txt`
 
-2. **Fetch the extension index** (for extension identification):
-   ```
-   curl -sL https://raw.githubusercontent.com/rcrsr/rill-ext/refs/heads/main/llms.txt
-   ```
+2. **Extension index:**
+   `curl -sL https://raw.githubusercontent.com/rcrsr/rill-ext/refs/heads/main/llms.txt`
 
-3. **Fetch the rill-agent reference** (for HTTP deployment and bundling):
-   ```
-   curl -sL https://raw.githubusercontent.com/rcrsr/rill-agent/refs/heads/main/llms.txt
-   ```
+3. **Rill-agent reference** (only if HTTP deployment is needed):
+   `curl -sL https://raw.githubusercontent.com/rcrsr/rill-agent/refs/heads/main/llms.txt`
 
-Store all outputs. Pass selectively to each agent:
+Selective inclusion in agent prompts:
 
-| Agent invocation | Include language ref? | Include extension index? | Include agent ref? | Fetch per-extension doc? |
-|-----------------|----------------------|--------------------------|--------------------|--------------------------|
-| Phase 4 (identify extensions) | No | Yes (5KB) | No | No |
-| Step 7b (rill-config.json) | No | No | No | Yes, via deep link from index |
-| Step 7c (custom extensions) | No | No | No | No |
-| Step 7d (prompt files) | No | No | No | Yes, fetch `prompt-md` docs |
-| Step 7e (rill scripts) | Yes (29KB) | No | No | No |
-| Step 7a (server.js, bundling) | No | No | Yes | No |
+| Invocation | Language ref | Extension index | Agent ref |
+|-----------|--------------|-----------------|-----------|
+| Phase 4 (architect — identify extensions) | No | Yes | No |
+| Phase 5 (architect — design data flow) | Yes | No | No |
+| Phase 6 (architect — custom extensions) | No | No | No |
+| Phase 7a (skill — scaffold) | No | No | Yes (only if `serve`) |
+| Phase 7b/c/d/e (engineer) | Yes | No | No |
+| Phase 7f (reviewer) | No | No | No |
 
 When including docs in an agent prompt, add: "The rill documentation is included below. Do NOT fetch it again."
 
@@ -107,21 +96,19 @@ The user provided: `$ARGUMENTS`
 - Parse the description for requirements
 
 **If no argument was provided:**
-- Use the `AskUserQuestion` tool to ask: "Describe the rill package you want to build. Include: what it does, what data it processes, what external services it connects to, and what output it produces."
+- Use `AskUserQuestion` to ask: "Describe the rill package you want to build. Include: what it does, what data it processes, what external services it connects to, and what output it produces."
 
-Use the extension index from Phase 1 to identify which rill capabilities match the stated requirements. This informs the requirements summary with concrete extension and pattern references.
-
-After gathering requirements, produce a structured summary:
+Produce a structured summary:
 
 ```
 REQUIREMENTS SUMMARY
 --------------------
 Purpose: [one sentence]
-Inputs: [list data sources]
-Outputs: [list expected outputs]
-External services: [list APIs, databases, storage]
-Data transformations: [list processing steps]
-Error conditions: [list failure modes]
+Inputs: [list]
+Outputs: [list]
+External services: [list]
+Data transformations: [list]
+Error conditions: [list]
 ```
 
 ### Determine Project Location
@@ -133,449 +120,193 @@ Record the decision as:
 PACKAGE LOCATION: subfolder: package-name/
 ```
 
-Include this decision in the requirements summary output.
-
 ## Phase 3: Ask Clarifying Questions
 
-Review the requirements summary and the extension index from Phase 1 for gaps. Use your knowledge of available rill extensions and language features to ask targeted questions.
-
-Ask the user about ANY of these that are unclear:
+Review the requirements and the extension index for gaps. Ask the user about ANY of these that are unclear:
 
 1. **Data format**: What format are inputs/outputs? (JSON, CSV, plain text, binary)
-2. **LLM usage**: Does the package need LLM capabilities? Which provider? (Anthropic, OpenAI, Gemini)
-3. **Storage**: Does it need persistent state? (SQLite for local, Redis for distributed)
-4. **File storage**: Does it need file/object storage? (S3, R2, MinIO)
-5. **Vector search**: Does it need embeddings or semantic search? (Qdrant, Pinecone, ChromaDB)
-6. **MCP servers**: Does it need to connect to MCP tool servers?
+2. **LLM usage**: Does the package need LLM capabilities? Which provider?
+3. **Storage**: Does it need persistent state? (SQLite, Redis)
+4. **File storage**: S3, R2, MinIO?
+5. **Vector search**: Embeddings, semantic search? (Qdrant, Pinecone, ChromaDB)
+6. **MCP servers**: Tool servers to connect to?
 7. **Claude Code**: Does it need to invoke Claude Code CLI?
-8. **Concurrency**: Are operations independent (use `map`) or sequential (use `each`)?
-9. **Error handling**: What happens on failure? Halt, retry, skip?
-10. **Scale**: Expected data volumes? (affects iteration limits, batch sizes)
-11. **Vendor provisioning**: For each external service identified (LLM provider, storage, vector DB, MCP server, payment processor, etc.), does the user already have an active account, valid API key, and any required resources provisioned (buckets created, vector collections with correct dimensions, database schemas, webhook endpoints)? If not, explicitly state that the user must provision these before running the package; this skill will not do it.
+8. **Concurrency**: Independent (parallel) or sequential operations?
+9. **Error handling**: Halt, retry, skip on failure?
+10. **Scale**: Expected data volumes?
+11. **Vendor provisioning**: For each external service, does the user already have an active account, valid API key, and required resources provisioned (buckets, collections, schemas, webhooks)? If not, state explicitly that the user must provision these before running.
 
-Ask ONLY the questions relevant to the package. Do NOT ask all 11 for every package.
+Ask ONLY relevant questions. Use `AskUserQuestion` to combine all into one call. Wait for the response before Phase 4.
 
-Use the `AskUserQuestion` tool to present your questions. Combine all relevant questions into one AskUserQuestion call. Wait for the user's response before proceeding to Phase 4.
+## Phase 4: Identify Capabilities and Extensions (architect)
 
-## Phase 4: Identify Rill Capabilities and Extensions
+Delegate to the `rill-architect` agent.
 
-Delegate to the `rill-engineer` agent to identify which rill language features and extensions apply.
-
-Use the Agent tool with `subagent_type: "rill-engineer"` and a prompt that includes:
+Use Agent with `subagent_type: "rill-architect"` and a prompt containing:
 - The full requirements summary from Phase 2
 - The user's answers from Phase 3
-- The extension index content fetched in Phase 1
-- A request to: identify which rill-ext packages are needed (using the provided extension index), what configuration each requires, and which rill language patterns best fit the data flow
-- Instruction: "The extension index is included below. Do NOT fetch documentation — use what is provided."
-- A request to identify any capabilities that require custom TypeScript extensions (not covered by built-in rill-ext packages)
+- The extension index content from Phase 1
+- The package directory path (architect will write the blueprint there)
+- Instruction: "The extension index is included below. Do NOT fetch documentation. Identify rill-ext packages, decide on any custom extensions, and write the Extension Plan section of the blueprint at `<package>/.rill-design/blueprint.md`. Reply with a short summary and any blueprint gaps."
 
-### When to create a custom extension
+Wait for the architect to write the blueprint. Read the blueprint and surface any "Blueprint gaps" to the user before continuing.
 
-Only create a custom extension when one of these applies:
+### NPM package discovery (orchestrator step)
 
-1. **External data access.** The package needs to fetch from or push to a service with no built-in rill-ext coverage (RSS feeds, vendor APIs, proprietary protocols). Wrap the minimum necessary functionality from an npm SDK package.
-2. **Vendor SDK integration.** A third-party npm package provides the best way to interact with a service (e.g., `fast-xml-parser` for RSS, `@aws-sdk/client-s3` for S3, `stripe` for payments). The extension wraps the SDK, not reimplements it.
-3. **Complexity beyond rill.** The logic involves binary data processing, cryptographic operations, or stateful protocols that rill's string/list/dict types cannot express cleanly.
+If the architect's blueprint specifies a custom extension that wraps an npm package, search for the best candidate before Phase 6:
+1. Use WebSearch to find the npm package (e.g., "npm rss parser", "npm stripe sdk")
+2. Prefer high download counts, recent updates, TypeScript types
+3. Present candidates to the user via `AskUserQuestion` and record the chosen package in the blueprint before proceeding
 
-Do NOT create a custom extension for:
-- Logic that rill operators can express (filtering, sorting, formatting, string manipulation)
-- LLM interactions (use built-in LLM extensions)
-- File I/O or KV storage (use built-in rill-ext packages)
+## Phase 5: Design Data Flow (architect)
 
-### NPM package discovery
+Delegate to the `rill-architect` agent again.
 
-When a custom extension is needed, search for relevant npm packages:
-1. Use WebSearch to find the best npm package for the capability (e.g., "npm rss parser", "npm stripe sdk")
-2. Prefer packages with high download counts, recent updates, and TypeScript types
-3. Present the candidate package(s) to the user for approval before adding to `package.json`
+Use Agent with `subagent_type: "rill-architect"` and a prompt containing:
+- The package directory path
+- The rill language reference content from Phase 1
+- Any architect notes or user clarifications since Phase 4
+- Instruction: "The rill language reference is included below. Do NOT fetch documentation. Extend the blueprint at `<package>/.rill-design/blueprint.md` with: Pipeline Blueprint section (per script), Prompt Inventory, and Design Checklist Results. Reply with a short summary and any blueprint gaps."
 
-From the agent's response, produce:
+Read the updated blueprint. Present the Pipeline Blueprint and Prompt Inventory sections to the user. Wait for approval before Phase 6.
 
-```
-EXTENSION PLAN
---------------
-Bundled extensions needed:
-  - [name]: [purpose] -> mount as "[namespace]" from "@rcrsr/rill/ext/[name]"
+## Phase 6: Design Custom Extensions (architect)
 
-Vendor extensions needed:
-  - [package name]: [purpose] -> mount as "[namespace]"
+If Phase 4 identified custom extensions, delegate to the `rill-architect` agent.
 
-Custom extensions needed:
-  - [name]: [what it does, why no built-in covers it]
-  - npm package: [package name] — [what it provides]
-  - Functions exposed to rill: [list]
-
-Key rill patterns:
-  - [pattern]: [where it applies]
-```
-
-ALL extensions — bundled, vendor, and custom — MUST appear in `extensions.mounts` in `rill-config.json`. Bundled extensions use `@rcrsr/rill/ext/<name>` as the mount path (listed in the "Import" column of the extension index). Vendor extensions use their npm package name. Custom extensions use `./dist/extensions/<file>.js`.
-
-### Prompt externalization (mandatory when LLMs are used)
-
-If the package calls any LLM extension (`rill-ext-anthropic`, `rill-ext-openai`, `rill-ext-gemini`, etc.), the extension plan MUST include `@rcrsr/rill-ext-prompt-md` mounted as `prompt` with `basePath: "./prompts"`. Prompts are never hard-coded in rill scripts. See Phase 5, Design Principle 5 for rationale.
-
-## Phase 5: Design the Data Flow
-
-Before writing any code, design the rill pipeline as a blueprint. This separates "what operators and patterns to use" from "write correct syntax." The skill executor (you) does this step directly — do NOT delegate to an agent.
-
-Using the extension plan from Phase 4 and the rill language reference from Phase 1, produce a **pipeline blueprint** that maps the full data flow in rill pseudocode.
-
-### Design principles
-
-1. **Express workflows in rill, not prompts.** Filtering, sorting, ranking, formatting, string manipulation, and data transformation belong in rill operators (`filter`, `map`, `fold`, `->` pipes). Do NOT delegate logic to the LLM that rill can express directly. LLM calls are for generation, summarization, data extraction from unstructured text, and tasks that require language understanding — not for processing well-defined structured data.
-
-2. **Use LLM calls sparingly with atomic, well-scoped tasks.** Each LLM call should do one thing with a prescriptive, opinionated prompt. Prefer multiple focused calls over one large open-ended call. If the logic can be expressed as a rill pipeline (even a complex one), prefer rill.
-
-3. **Choose the right data-gathering pattern.** When a pipeline needs external data to enrich LLM context, pick one of these two patterns based on the decision flow below.
-
-   **Decision flow:**
-   ```
-   Does the script know WHAT to fetch before calling the LLM?
-   ├── YES: items are enumerable (list of commits, URLs, IDs, records)
-   │   └── Use PREFETCH: iterate with map/each, gather data, pass to message/generate
-   └── NO: the LLM must decide what to fetch based on intermediate results
-       ├── Is the provider OpenAI-native? (not Groq, Ollama, or other compatible APIs)
-       │   ├── YES → Use tool_loop with tool closures
-       │   └── NO → Restructure as prefetch if possible, or use OpenAI provider
-       └── Does the LLM need multi-step reasoning to decide what to fetch?
-           ├── YES → tool_loop is the only option; confirm provider supports it
-           └── NO → Prefer prefetch; simpler, faster, no provider constraints
-   ```
-
-   **Prefetch pattern** (preferred when items are known):
-   ```rill
-   # Gather data deterministically, then summarize
-   $items -> map {
-     $cmd.tool(list["fetch", $]) -> .stdout
-   } -> .join("\n---\n") => $context
-
-   $ai.message("Summarize:\n\n{$context}")() -> .content => $summary
-   ```
-   Prefetch runs without LLM round-trips, works with all providers, and keeps the LLM focused on understanding rather than orchestrating.
-
-   **Tool loop pattern** (only when LLM must decide what to fetch):
-   ```rill
-   # Define tool closures the LLM can call
-   ^("Search docs by query") |^("Search query") q: string| {
-     $cmd.search(list[$q]) -> .stdout
-   }:string => $search
-
-   # LLM decides which tools to call and when
-   $ai.tool_loop(
-     "Answer the question using search.\n\nQuestion: {$question}",
-     dict[search: $search],
-     dict[max_turns: 10]
-   )() -> .content => $answer
-   ```
-
-   **Provider compatibility:** `tool_loop` sends provider-specific message properties (e.g., `parsed` for OpenAI). Non-OpenAI providers (Groq, Ollama, Together) may reject these. During Phase 3, confirm provider support if tool_loop is planned.
-
-4. **Prefer `generate` over `message` for structured LLM output.** Use `$ext.generate(prompt, dict[schema: ...])` when the LLM output has a known shape. Structured output enforces the schema at the API level and returns `.data` with typed fields. Fall back to `$ext.message()` for free-form text or when the provider does not support `json_schema` response format. During Phase 3, confirm whether the target model supports structured output.
-
-   **Schema format for `generate`:** Use a legacy dict with string type names, not `.^input` structural types. The `generate` function calls `buildJsonSchema`, which expects this format:
-
-   ```rill
-   # Simple schema — values are type name strings
-   dict[name: "string", age: "number", active: "bool"] => $schema
-
-   # Schema with descriptions — values are dicts with type and description
-   dict[
-     name: dict[type: "string", description: "Full name"],
-     age: dict[type: "number", description: "Age in years"]
-   ] => $schema
-
-   # Nested schema — dict type with properties
-   dict[
-     user: dict[type: "dict", properties: dict[name: "string", email: "string"]]
-   ] => $schema
-
-   $ai.generate("Extract user info: Alice, 30", dict[schema: $schema]) -> .data
-   ```
-
-   Do NOT use `$closure.^input` as the schema — the `generate` function does not accept structural types.
-
-5. **Externalize prompts into `.prompt.md` files via `@rcrsr/rill-ext-prompt-md`.** Never hard-code prompt strings in rill scripts. Every prompt lives in its own `prompts/<name>.prompt.md` file with YAML frontmatter declaring `description`, `params`, and `output` (`string` or `list`). Scripts invoke prompts by resolution name through the `prompt` namespace. This yields four benefits: prompts are editable without touching scripts, `^hash` reflection detects prompt drift between runs, `output: list` with `@@ role` markers produces provider-agnostic `[{role, content}]` dicts consumable by any LLM extension's `messages()` function, and task instructions stay separated from pipeline logic.
-
-   ```rill
-   # In agents/research.prompt.md:
-   # ---
-   # description: Answer a research question with cited sources.
-   # params:
-   #   - question: string
-   # output: list
-   # ---
-   # @@ system
-   # You are a research assistant. Provide accurate, well-cited answers.
-   # @@ user
-   # {question}
-
-   # In the rill script:
-   $prompt.agents_research($question) => $messages
-   $ai.messages($messages, dict[max_tokens: 1024])() -> .content => $answer
-   ```
-
-   Resolution rule: file path relative to `basePath` becomes the callable name with `/` replaced by `_`. `agents/research.prompt.md` → `$prompt.agents_research`.
-
-   **Corollary — do not rely on the system prompt in rill-config.json.** The `system` field is unreliable across providers and models. Place task instructions inside the `.prompt.md` file using `@@ system` sections, not in the config `system` field. Reserve the config `system` field for identity-level context only (e.g., "You are a technical editor"), if at all.
-
-6. **Put static data in rill-config.json, not in scripts.** Lists of URLs, API endpoints, constants, and resource identifiers belong in `extensions.config` and are accessed via extension functions or config values. Scripts should read configuration, not hard-code it. This keeps scripts reusable across different configurations.
-
-7. **Wrap scripts in fully decorated typed closures with return type signatures.** Every script must define a named closure with typed input parameters and a structural return type assertion (`:type` after the closing brace). Fully decorate the closure: `^("description")` on the closure itself and `^("description")` on every parameter. This metadata is visible to callers and tooling via `.^description`, `.^input`, and `.^output` reflection. The `main` field in `rill-config.json` references the closure name (e.g., `"main": "main.rill:summarize"`).
-
-   ```rill
-   # Fully decorated entry point with return type
-   ^("Summarize top AI news") |^("Number of items to return") count: number| {
-     # pipeline here...
-     dict[items: $results, count: $results -> .len]
-   }:dict(items: list, count: number) => $summarize
-   ```
-
-   Use the full structural type that matches the closure's return value. For simple returns use `:string` or `:number`. For dicts use `:dict(field: type, ...)`. This enables callers and tooling to inspect the output shape without reading the implementation.
-
-   The `rill-config.json` entry point names the closure:
-   ```json
-   { "main": "main.rill:summarize" }
-   ```
-
-8. **Log operations, never functional results.** Use `log` for operational visibility (progress, timing, warnings). Never use `log` for primary output. All functional results must be returned as structured, typed values from the closure. Callers consume the return value, not log output.
-
-   ```rill
-   # Good: log for operations, return for results
-   "Fetching {$urls -> .len} feeds..." -> log
-   $results  # returned as structured data
-
-   # Bad: logging the result
-   $results -> log  # caller can't consume this
-   ```
-
-### Script boundary decision
-
-Decide whether the package needs one script or multiple:
-- **Single script**: The entire data flow is one pipeline with no branching entry points. Use `main.rill`.
-- **Multiple scripts**: The package has distinct modes (e.g., ingest vs search), reusable sub-pipelines, or scripts that exceed 50 lines. Split into `scripts/` and use `main.rill` as dispatcher.
-
-### Pipeline blueprint format
-
-For each script, produce a step-by-step blueprint. Each step must specify:
-1. **What** — the transformation in plain language
-2. **Operator** — which rill operator (`map`, `each`, `fold`, `filter`, `->`) and why
-3. **Extension call** — which `$ext.function()` if any, with key parameters
-4. **Data shape** — what the step produces (type and structure)
-
-Use this format:
-
-```
-PIPELINE: [script-name.rill]
----
-Step 1: [description]
-  Operator: [-> / map / each / fold / filter]
-  Call: $ext.function(params)
-  Produces: [type] — [shape description]
-
-Step 2: [description]
-  Operator: [...]
-  ...
-```
-
-### Operator selection rules
-
-Apply these rules when choosing operators:
-
-| Situation | Operator | Rationale |
-|-----------|----------|-----------|
-| Transform items independently, no I/O | `map` | Parallel, no side effects |
-| Transform items with I/O (API calls) | `each` | Sequential, respects rate limits |
-| Remove items from a collection | `filter` | Parallel, returns matching items |
-| Reduce collection to single value | `fold(init)` | Sequential with accumulator `$@` |
-| Chain transforms on a single value | `->` pipe | Left-to-right data flow |
-| Resolve LLM stream to result | `()` | Stream resolution |
-| Index items during iteration | `enumerate -> each/map` | Access via `$.index`, `$.value` |
-
-### Design checklist
-
-Before moving to Phase 6, verify the blueprint covers:
-- [ ] Every data source has an extension call or host input
-- [ ] Every intermediate value has a named capture (`=> $name`) only if reused
-- [ ] `map` is used for pure transforms, `each` for side effects or sequential I/O
-- [ ] LLM calls use `generate` with legacy dict schema when output shape is known; fall back to `message` for free-form text
-- [ ] All LLM prompts live in `prompts/*.prompt.md` files loaded via `@rcrsr/rill-ext-prompt-md`; no prompt strings hard-coded in scripts
-- [ ] Task instructions live in the `.prompt.md` body (or `@@ system` section), not in the config `system` field
-- [ ] Script is wrapped in a named typed closure, fully decorated (`^("desc")` on closure and every param)
-- [ ] The final expression is the return value (structured data, no `log`)
-- [ ] `log` is used only for operational messages (progress, warnings), never for results
-- [ ] Script stays under 50 lines (split if over)
-- [ ] No LLM call does what a rill operator can do (filtering, sorting, formatting)
-- [ ] Static data (URLs, constants, system prompts) lives in rill-config.json, not hard-coded
-- [ ] Data gathering follows the decision flow: prefetch when items are known, tool_loop only when LLM must decide what to fetch
-- [ ] If tool_loop is used, provider compatibility is confirmed (non-OpenAI providers may reject it)
-- [ ] Every exec command has arg constraints: use `allowedArgs` when all args are static and predictable; use `blockedArgs` when args include dynamic values (URLs, user input)
-
-Present the pipeline blueprint to the user. Wait for approval before proceeding to Phase 6.
-
-## Phase 6: Design Custom Extensions
-
-If Phase 4 identified custom extensions, first confirm third-party dependencies with the user, then delegate the design.
-
-### Step 6a: Confirm third-party packages
-
-If the extension plan includes npm packages the user hasn't explicitly requested, present them for approval:
-
-"The package needs [capability]. I recommend using [npm-package] ([download count], [last updated]). This adds a third-party dependency. Approve?"
-
-Do NOT proceed with a third-party package the user hasn't confirmed.
-
-### Step 6b: Design the extension
-
-Custom extensions should be **thin wrappers** around npm packages. The extension translates between the npm SDK's API and rill's type system (`RillValue`, `RillFunction`). Keep business logic in rill scripts, not in the extension.
-
-Use the Agent tool with `subagent_type: "rill-engineer"` and a prompt that includes:
-- The extension plan from Phase 4 (including the npm package to wrap)
-- The pipeline blueprint from Phase 5 (so the agent sees how extension functions are called)
+Use Agent with `subagent_type: "rill-architect"` and a prompt containing:
+- The package directory path
 - The custom extension template at `${CLAUDE_SKILL_DIR}/templates/custom-extension.ts`
-- A request to design each custom extension: TypeScript interface, function signatures, parameter types, return types, config schema, error handling
-- A request to ensure designs follow rill-ext conventions (RillStream for streaming, RILL-R004 for errors)
-- Instruction: "Design a thin wrapper around the npm package. Expose only the functions the rill script needs. Keep the extension focused and minimal. All configuration and credentials must come from rill-config.json (via the factory config parameter), not from environment variables read directly in the extension."
+- The npm package(s) to wrap (confirmed in Phase 4)
+- Instruction: "Extend the blueprint at `<package>/.rill-design/blueprint.md` with the Custom Extension API Designs section. Each design specifies the TypeScript interface, function signatures, parameter and return types, config schema, and error codes. Keep extensions thin wrappers — business logic stays in rill scripts. Reply with a short summary."
 
-Present the extension designs to the user for approval before implementing.
+Read the updated blueprint. Present the Custom Extension API Designs to the user for approval before Phase 7.
 
 If no custom extensions are needed, skip to Phase 7.
 
-## Phase 7: Implement the Solution
+## Phase 7: Implement (engineer)
 
-ALL rill code and rill-config.json in this phase MUST go through the `rill-engineer` agent. The agent has access to the latest rill documentation and enforces correctness. Environment scaffolding (package.json, tsconfig, etc.) is handled directly by this skill.
+ALL rill code, JSON config, prompt files, and TypeScript extensions go through the `rill-engineer` agent. Each step references the frozen blueprint as the source of truth. The engineer does not redesign — if the blueprint is incomplete, the engineer will return a "Blueprint gap" message; route the gap back to Phase 5 or 6 with the architect.
 
-### Step 7a: Scaffold Project Environment
+### Step 7a: Scaffold Project Environment (skill)
 
-Create the package directory structure and Node.js/TypeScript environment. Read the templates and adapt them to the package.
+Create the package directory structure and Node.js/TypeScript environment.
 
-1. **Create directory structure** following `${CLAUDE_SKILL_DIR}/templates/PROJECT-STRUCTURE.md`, using the package location decision from Phase 2:
-   - If **current directory**: create `extensions/` and `scripts/` subdirectories as needed, place files directly in the working directory
-   - If **subfolder**: create `package-name/` first, then `extensions/` and `scripts/` inside it
+1. **Create directory structure** following `${CLAUDE_SKILL_DIR}/templates/PROJECT-STRUCTURE.md`:
    ```
    [package-root]/
+     .rill-design/      # already created by architect
      extensions/        # only if custom extensions exist
      scripts/           # only if multiple rill scripts
+     prompts/           # only if LLM extensions exist
    ```
 
 2. **Generate `package.json`** from `${CLAUDE_SKILL_DIR}/templates/package.json`:
-   - Set `name` to the package name (lowercase, hyphens)
-   - Add each rill-ext package from the extension plan to `dependencies`
-   - Add any npm packages required by custom extensions to `dependencies`
-   - Keep `@rcrsr/rill` as a dependency (the runtime)
-   - Always include `@rcrsr/rill-cli` in `devDependencies` (provides `rill-run`, `rill-check`, `rill-build`)
-   - Always include `@rcrsr/rill-agent` in `devDependencies` (provides bundling and HTTP serving)
-   - Always include the `dev` script (`rill-run .`)
-   - If custom TypeScript extensions exist: include `predev` (`tsc`), `check` (`tsc --noEmit`), and `build` (`tsc && rill-build . --output build`) scripts, plus `typescript` and `@types/node` in `devDependencies`
-   - If no custom TypeScript extensions exist: omit `predev` and `check` scripts, set `build` to `rill-build . --output build` (no `tsc` prefix), and omit `typescript` and `@types/node` from `devDependencies`
-   - Include the `serve` script (`node server.js`) if the user wants HTTP deployment
+   - Set `name` to the package name
+   - Add each rill-ext package from the blueprint Extension Plan to `dependencies`
+   - Add npm packages required by custom extensions
+   - Always include `@rcrsr/rill-cli` and `@rcrsr/rill-agent` in `devDependencies`
+   - If custom TypeScript extensions exist: include `predev` (`tsc`), `check` (`tsc --noEmit`), `build` (`tsc && rill-build . --output build`); add `typescript` and `@types/node` to `devDependencies`
+   - If no custom extensions: omit `predev`/`check`, set `build` to `rill-build . --output build`
+   - Include the `serve` script if HTTP deployment is requested
 
-3. **Generate `tsconfig.json`** from `${CLAUDE_SKILL_DIR}/templates/tsconfig.json` (only if custom extensions exist):
-   - Keep defaults as-is unless the package requires different settings
+3. **Generate `tsconfig.json`** from template (only if custom extensions exist).
 
-4. **Generate `.env`** from `${CLAUDE_SKILL_DIR}/templates/env.template`:
-   - Include only the variables referenced in the extension plan
-   - Remove irrelevant provider sections
+4. **Generate `.env`** from `${CLAUDE_SKILL_DIR}/templates/env.template`, including only the variables referenced in the blueprint Extension Plan.
 
-5. **Generate `.gitignore`** from `${CLAUDE_SKILL_DIR}/templates/gitignore`
+5. **Generate `.gitignore`** from template.
 
-6. **Run `npm install`** to install dependencies. If npm is not available, warn the user and continue.
+6. **Run `npm install`**. Warn and continue if npm is unavailable.
 
-7. **Generate `server.js`** from `${CLAUDE_SKILL_DIR}/templates/server.js` (only if the user wants HTTP deployment):
-   - Keep defaults as-is unless the package requires different settings (e.g., port number)
+7. **Generate `server.js`** from template (only if HTTP deployment is requested).
 
-### Step 7b: rill-config.json
+### Step 7b: rill-config.json (engineer)
 
-Use the Agent tool with `subagent_type: "rill-engineer"` to generate the configuration file. Include in the prompt:
-- The extension plan from Phase 4
-- The package name and version (for the top-level `"name"` and `"version"` fields)
-- The closure name(s) from the pipeline blueprint (for the `"main": "script.rill:closure_name"` field)
-- All mount namespaces and their packages
-- All config parameters per extension
-- Any static data from the blueprint that belongs in config (URL lists, constants, system prompts)
-- Instruction to use `${VAR_NAME}` for secrets (matching the `.env` file from Step 7a)
-- Instruction to write the file to the package directory
-- The template at `${CLAUDE_SKILL_DIR}/templates/rill-config.json` as the structural starting point
-- Instruction: "ALL extensions must appear in extensions.mounts. Bundled extensions use `@rcrsr/rill/ext/<name>` as the mount path. Vendor extensions use their npm package name. Custom extensions use `./dist/extensions/<file>.js`."
+Use Agent with `subagent_type: "rill-engineer"` and a prompt containing:
+- The package directory path
+- The blueprint path: `<package>/.rill-design/blueprint.md`
+- The rill-config.json template path
+- Instruction: "Read the blueprint, then write `rill-config.json` exactly as specified in the Extension Plan section. Use `${VAR_NAME}` for secrets. Bundled extensions use `@rcrsr/rill/ext/<name>`; vendor extensions use the npm name; custom extensions use `./dist/extensions/<file>.js`. The `main` field references `script.rill:closure_name` from the blueprint. If anything is unclear, return a Blueprint gap message instead of guessing."
 
-### Step 7c: Custom TypeScript Extensions (if any)
+### Step 7c: Custom TypeScript Extensions (engineer, if any)
 
-Use the Agent tool with `subagent_type: "rill-engineer"` for each custom extension. Include in the prompt:
-- The extension design from Phase 6
-- The template at `${CLAUDE_SKILL_DIR}/templates/custom-extension.ts` as the structural starting point
-- Instruction to create the TypeScript source file in the `extensions/` directory
-- Instruction to implement all functions with proper type annotations and descriptions
-- Instruction to handle errors with RILL-R004 format
-- Instruction to export the extension value for host registration
+For each custom extension in the blueprint, use Agent with `subagent_type: "rill-engineer"` and a prompt containing:
+- The package directory path
+- The blueprint path
+- The extension name to implement
+- The custom-extension template path
+- Instruction: "Read the Custom Extension API Designs section of the blueprint. Implement the extension as a thin wrapper. All configuration comes from the factory `config` parameter, never directly from `process.env`. Errors use RILL-R004 format."
 
-After all custom extensions are written, run `npm run check` to verify TypeScript compilation. Fix any type errors before proceeding.
+After all custom extensions are written, run `npm run check` to verify TypeScript compilation. If errors, fix them by re-invoking the engineer with the error message.
 
-### Step 7d: Prompt Files
+### Step 7d: Prompt Files (engineer, if LLMs are used)
 
-If the package uses any LLM extension, write the `.prompt.md` files before the rill scripts. Scripts reference prompts by resolution name, so the prompt set must exist first.
+For each prompt in the blueprint Prompt Inventory, use Agent with `subagent_type: "rill-engineer"` and a prompt containing:
+- The package directory path
+- The blueprint path
+- The prompt entry (path, description, params, output mode, called-by)
+- Instruction: "Read the Prompt Inventory section of the blueprint. Write the prompt file at the specified path with YAML frontmatter (`description`, `params`, `output`) and the prompt body. Use `{name}` interpolation for scalar params only. For `output: list`, use `@@ system` and `@@ user` markers."
 
-For each prompt identified in the pipeline blueprint, use the Agent tool with `subagent_type: "rill-engineer"` and include in the prompt:
-- The purpose of the prompt (what the LLM call should accomplish)
-- The parameters the script will pass (names and types)
-- Whether to use `output: string` (single-turn rendered string) or `output: list` (role-tagged messages with `@@ system`/`@@ user` markers)
-- Instruction to write each file under `prompts/` with a descriptive path (e.g., `prompts/summarize.prompt.md`, `prompts/agents/research.prompt.md`)
-- Instruction to write a complete YAML frontmatter block with `description`, `params`, and `output` fields
-- Instruction to use `{param_name}` interpolation for scalar params only (string, num, bool); do NOT interpolate dicts or lists
-- Instruction to prefer `output: list` with `@@ system` and `@@ user` sections for any LLM call, because the resulting `[{role, content}]` shape passes directly into `messages()` on any provider
+### Step 7e: Rill Scripts (engineer)
 
-Skip this step if no LLM extensions are used.
-
-### Step 7e: Rill Scripts
-
-Use the Agent tool with `subagent_type: "rill-engineer"` for each rill script. Include in the prompt:
-- The pipeline blueprint from Phase 5 for this specific script (the agent implements the design, not invents one)
-- The extension plan (which extensions are available under which namespaces)
-- The rill-config.json content (so the agent knows available mounts)
-- The rill language reference content fetched in Phase 1
-- Instruction: "The rill language reference is included below. Do NOT fetch documentation — use what is provided."
-- Instruction: "Implement the pipeline blueprint below. Follow the operator choices and data shapes exactly. Do not redesign the flow. Wrap the script in a named typed closure matching the blueprint. Use `log` only for operational messages, never for results."
-- Instruction to write the `.rill` file to the package directory
+For each script in the blueprint Pipeline Blueprint, use Agent with `subagent_type: "rill-engineer"` and a prompt containing:
+- The package directory path
+- The blueprint path
+- The specific PIPELINE section the engineer should implement
+- The rill-config.json content (so the engineer knows available mounts)
+- The rill language reference content from Phase 1
+- Instruction: "The rill language reference is included below. Do NOT fetch documentation. Read the blueprint and implement the specified PIPELINE exactly. Closure name, parameter names and types, return type, operator choices, and extension calls must match the blueprint. Use `log` only for operational messages."
 
 For projects with multiple scripts, you MAY launch multiple `rill-engineer` agents in parallel for independent scripts. Scripts that depend on each other must be implemented sequentially.
 
-### Step 7f: Validate Rill Scripts
+### Step 7f: Validate (reviewer)
 
-After all rill scripts are written, run `npx rill-check <file>` on each `.rill` file. If errors are found, fix them by re-invoking the rill-engineer agent with the error message and script content. Repeat until all scripts pass validation. Do NOT proceed to Phase 8 with failing scripts.
+Use Agent with `subagent_type: "rill-reviewer"` and a prompt containing:
+- The package directory path (absolute)
+- The blueprint path
+- Instruction: "Validate the implementation against the blueprint. Run rill-check on every .rill file, tsc --noEmit if extensions/ exists, and grade design conformance. Return the structured review report."
 
-### Step 7g: Entry Point
+If the verdict is FAIL, route the violations back to the engineer:
+- For tooling failures (rill-check / tsc), invoke the engineer with the specific error and the affected file
+- For design-conformance failures, invoke the engineer with the violation and the blueprint section it violates
+- After fixes, re-invoke the reviewer
 
-If the package has multiple scripts, use the Agent tool with `subagent_type: "rill-engineer"` to create the main entry script that orchestrates them. Include the full list of scripts and their purposes.
+Repeat until the reviewer returns PASS, or after 3 unsuccessful loops, halt and report the open violations to the user.
+
+### Step 7g: Entry Point (engineer, multi-script only)
+
+If the package has multiple scripts, use Agent with `subagent_type: "rill-engineer"` to create the dispatcher in `main.rill`. Reference the blueprint's Pipeline Blueprint sections for the available scripts.
 
 ## Phase 8: Review and Deliver
 
-After implementation:
+After implementation passes review:
 
 1. List all created files with a one-line description of each
 2. Show the complete `rill-config.json`
-3. Produce a **Provisioning Checklist** that the user must complete before the package will run. For each external vendor the package depends on, list:
+3. Produce a **Provisioning Checklist** the user must complete before the package will run. For each external vendor:
    - **Vendor and purpose** (e.g., "OpenAI — chat completions and embeddings")
-   - **Account URL** where the user signs up or logs in
-   - **Required credential(s)** and their env var names (matching the `.env` file), including any required scopes or permissions
-   - **Resources to provision remotely** before first run (e.g., "Create a Qdrant collection named `docs` with vector size 1536 and Cosine distance", "Create an S3 bucket in region `us-east-1`", "Set up a Stripe webhook endpoint pointing to your server URL")
+   - **Account URL**
+   - **Required credential(s)** with env var names matching `.env`, including required scopes
+   - **Resources to provision remotely** before first run (e.g., "Create a Qdrant collection named `docs` with vector size 1536 and Cosine distance")
    - **Billing note** if usage incurs cost
+
    State clearly: "This skill did not create any vendor accounts, fetch any keys, or provision any remote resources. You are responsible for all of the above."
+
 4. Note any assumptions made during implementation
 5. Suggest next steps (testing, deployment, extensions)
 6. Show the run command: `npm run dev`
-7. If HTTP deployment is configured, show the build and serve commands: `npm run build && npm run serve`
-8. **Direct the user to fill in `.env`** with the credentials from the Provisioning Checklist before running. State explicitly: "Open `.env` and populate every variable with real values. The package will fail at runtime if any required credential is missing or placeholder."
-9. **Suggest running the package next** so the skill can verify functionality. Phrase it as: "Once `.env` is populated, prompt me to run the package (e.g., `run the package`). I will execute it, observe the output, and help diagnose any runtime issues before we call this complete."
+7. If HTTP deployment is configured: `npm run build && npm run serve`
+8. **Direct the user to fill in `.env`**. State explicitly: "Open `.env` and populate every variable with real values. The package will fail at runtime if any required credential is missing."
+9. **Suggest running the package next**: "Once `.env` is populated, prompt me to run the package (e.g., `run the package`). I will execute it, observe the output, and help diagnose any runtime issues."
 
-Ask the user if they want changes to any part of the implementation.
+Ask the user if they want changes.
 
 ### Step 8b: Save Transcript
 
 After the package is complete and the user is satisfied, emit a snoop meta tag to save the transcript in the package directory. This must be the LAST thing you output.
 
-Emit an XML tag with these attributes (replace ALL placeholders with actual values):
+Emit an XML tag with these attributes (replace ALL placeholders):
 - Tag name: `snoop:meta`
-- `file`: the package directory + `/transcript/create-rill-package` (e.g., `ai-news-summary/transcript/create-rill-package`)
+- `file`: package directory + `/transcript/create-rill-package`
 - `description`: package name + colon + one-line summary
 - `tags`: `rill,create-rill-package`
-
-IMPORTANT: Do NOT copy the template verbatim. Replace every placeholder before emitting.

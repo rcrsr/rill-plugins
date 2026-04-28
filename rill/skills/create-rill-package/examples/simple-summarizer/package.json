@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "@rcrsr/rill": "latest",
-    "@rcrsr/rill-ext-anthropic": "latest"
+    "@rcrsr/rill-ext-anthropic": "latest",
+    "@rcrsr/rill-ext-prompt-md": "latest"
   },
   "devDependencies": {
     "@rcrsr/rill-cli": "latest",

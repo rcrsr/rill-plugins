@@ -1,7 +1,8 @@
 # Simple text summarizer
-# Extensions: ai (Anthropic LLM)
+# Extensions: ai (Anthropic LLM), prompt (prompt-md)
 
 use<ext:ai> => $ai
+use<ext:prompt> => $prompt
 
 # Entry point: takes text input, returns bullet-point summary
 ^("Summarize input text into bullet points") |^("Text to summarize") input: string| {
@@ -11,8 +12,9 @@ use<ext:ai> => $ai
 
   "Summarizing {$input -> .len} characters..." -> log
 
-  # Summarize with LLM
-  $ai.message("Summarize the following text:\n\n{$input}")() => $result
+  # Build messages from externalized prompt and call LLM
+  $prompt.summarize($input) => $messages
+  $ai.messages($messages)() => $result
 
   # Return structured result
   dict[

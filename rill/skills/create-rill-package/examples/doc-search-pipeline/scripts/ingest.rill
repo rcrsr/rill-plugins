@@ -21,7 +21,7 @@ use<ext:fs> => $storage
   "Embedding and storing {$pages -> .len} pages..." -> log
 
   # Process each page: embed and store
-  $pages -> each {
+  $pages -> seq({
     $ => $page
 
     # Generate embedding from page text
@@ -41,7 +41,7 @@ use<ext:fs> => $storage
     ])
 
     dict[id: $doc_id, url: $page.url, title: $page.title]
-  } => $indexed
+  }) => $indexed
 
   # Return structured result
   dict[

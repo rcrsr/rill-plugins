@@ -13,7 +13,8 @@
     "@rcrsr/rill": "latest",
     "@rcrsr/rill-ext-openai": "latest",
     "@rcrsr/rill-ext-qdrant": "latest",
-    "@rcrsr/rill-ext-fs-s3": "latest"
+    "@rcrsr/rill-ext-fs-s3": "latest",
+    "@rcrsr/rill-ext-prompt-md": "latest"
   },
   "devDependencies": {
     "@rcrsr/rill-cli": "latest",
