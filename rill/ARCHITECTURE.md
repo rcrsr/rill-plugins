@@ -101,7 +101,7 @@ generated: <ISO-8601 timestamp>
 
 ## Custom
 - mount: <namespace>
-  source: ./dist/extensions/<file>.js
+  source: ./extensions/<file>.ts
   npm wrapped: <package or "none">
   purpose: <one sentence>
   exposed functions: <list of signatures>
@@ -192,15 +192,26 @@ Phase 8:  review and deliver           (skill)
 
 ### Updating to a new rill runtime version
 
-1. Re-fetch `https://raw.githubusercontent.com/rcrsr/rill/refs/heads/main/docs/ref-llm.txt` and diff against the language reference embedded in `rill-engineer.md`.
+The upstream language reference is split into a small index, topic fragments, and a full bundle:
+
+- Index: `https://raw.githubusercontent.com/rcrsr/rill/refs/heads/main/docs/ref-llms.txt`
+- Full bundle: `https://raw.githubusercontent.com/rcrsr/rill/refs/heads/main/docs/ref-llms-full.txt`
+- Topic fragments: `https://raw.githubusercontent.com/rcrsr/rill/refs/heads/main/docs/llm/<topic>.txt` for `cheatsheet`, `anti-patterns`, `control-flow`, `errors`, `types`, `callables`, `stdlib`, `style`.
+
+To update the plugin to a new rill version:
+
+1. Re-fetch the full bundle and diff against the language reference embedded in `rill-engineer.md`.
 2. Update the engineer's "Known Documentation Errata" and any troubleshooting tables.
 3. Update the architect's operator selection rules if collection-operator semantics changed.
-4. Bump the plugin version (minor for additive changes, major for breaking syntax shifts).
+4. Update the Phase 1 fetch list in `SKILL.md` if the upstream split adds, removes, or renames fragments.
+5. Bump the plugin version (minor for additive changes, major for breaking syntax shifts).
 
 ## Revision history
 
 | Version | Change |
 |---------|--------|
+| 0.6.2   | Aligned templates and agent prompts with rill 0.19.x and rill-ext 0.19.6. Custom-extension template now uses `(config, ctx: ExtensionFactoryCtx)` and `runCtx.invalidate` with the generic atom taxonomy (RILL-R004 retired). LLM guidance updated for the unified `message()` prompt API, parts-shaped result history (`.messages[-1].parts[0].text`), positional `tool_loop` `max_turns`, factory-level `max_turns`/`max_errors`/`extra`, and the prompt-md inferred-output-mode behavior. Examples (`simple-summarizer`, `doc-search-pipeline`) regenerated to match. |
+| 0.6.1   | Switched to upstream's split language reference (`ref-llms-full.txt` + topic fragments under `docs/llm/`). Selective fragment loading per agent invocation. The old `ref-llm.txt` URL returned zero bytes. |
 | 0.6.0   | Split rill-engineer into architect + engineer + reviewer; introduced on-disk blueprint at `<package>/.rill-design/blueprint.md`. |
 | 0.5.0   | Updated inline guidance to rill 0.19 syntax (seq/fan/acc, while...do, `-> type`); mandated prompt-md externalization for multiline/parameterized prompts. |
 | 0.4.0   | LLM prompt documentation enhancements. |

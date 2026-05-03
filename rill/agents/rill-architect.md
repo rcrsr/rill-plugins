@@ -23,14 +23,35 @@ Always write the blueprint to `<package>/.rill-design/blueprint.md`. Create the 
 
 ## First Step: Consult Documentation
 
-If the orchestrator's prompt does not include the rill language reference and extension index, fetch them with `curl -sL` (Bash, not WebFetch — WebFetch summarizes and loses syntax detail):
+If the orchestrator's prompt does not include the rill language reference and extension index, fetch them with `curl -sL` (Bash, not WebFetch — WebFetch summarizes and loses syntax detail).
+
+For Phase 4 (extension identification): the cheatsheet plus the extension index is enough.
 
 ```
-curl -sL https://raw.githubusercontent.com/rcrsr/rill/refs/heads/main/docs/ref-llm.txt
-curl -sL https://raw.githubusercontent.com/rcrsr/rill/refs/heads/main/llms-ext-index.txt
+curl -sL https://raw.githubusercontent.com/rcrsr/rill/refs/heads/main/docs/llm/cheatsheet.txt
+curl -sL https://raw.githubusercontent.com/rcrsr/rill-ext/refs/heads/main/llms.txt
 ```
 
-The skill typically pre-fetches and includes them. Only fetch if missing.
+For Phase 5 (data flow): add control-flow and callables.
+
+```
+curl -sL https://raw.githubusercontent.com/rcrsr/rill/refs/heads/main/docs/llm/control-flow.txt
+curl -sL https://raw.githubusercontent.com/rcrsr/rill/refs/heads/main/docs/llm/callables.txt
+```
+
+For Phase 6 (custom TS extensions): no rill reference needed — TypeScript design only.
+
+If you need other topic fragments, the documents live at `https://raw.githubusercontent.com/rcrsr/rill/refs/heads/main/docs/llm/<topic>.txt` where `<topic>` is one of: `cheatsheet`, `anti-patterns`, `control-flow`, `errors`, `types`, `callables`, `stdlib`, `style`. The full bundle is at `docs/ref-llms-full.txt`.
+
+The skill typically pre-fetches and includes the right fragments. Only fetch if missing.
+
+## Authoritative call surfaces
+
+For Phase 5 (data flow) and beyond, the orchestrator includes an Extension Surface Inventory captured by `rill-describe project` against the chosen rill-ext packages. The Inventory lists every callable's parameter names, parameter types, return type, and (where present) annotations.
+
+The Inventory is the authoritative call surface. Treat it as ground truth over the extension index, README files, prior knowledge, or any text-only documentation. When the Inventory and another source disagree, the Inventory wins. If a callable you need is missing from the Inventory or its signature surprises you, return a Blueprint gap rather than designing against a guessed shape.
+
+Custom extensions designed in Phase 6 do not appear in the Inventory because their TypeScript has not been written yet — for those, you set the signatures yourself.
 
 ## Design Principles
 
@@ -68,7 +89,8 @@ $items -> fan({
   $cmd.tool(list["fetch", $]) -> .stdout
 }) -> .join("\n---\n") => $context
 
-$ai.message("Summarize:\n\n{$context}")() -> .content => $summary
+$ai.message("Summarize:\n\n{$context}")() => $result
+$result.messages[-1].parts[0].text => $summary
 ```
 
 **Tool loop pattern** (only when LLM must decide what to fetch):
@@ -78,14 +100,20 @@ $ai.message("Summarize:\n\n{$context}")() -> .content => $summary
   $cmd.search(list[$q]) -> .stdout
 }:string => $search
 
+# max_turns is positional (rill-ext 0.19.6); 0 inherits the factory value.
 $ai.tool_loop(
   "Answer using search.\n\nQuestion: {$question}",
   dict[search: $search],
-  dict[max_turns: 10]
-)() -> .content => $answer
+  10
+)() => $result
+$result.messages[-1].parts[0].text => $answer
 ```
 
 **Provider compatibility:** `tool_loop` sends provider-specific message properties (e.g., `parsed` for OpenAI). Non-OpenAI providers (Groq, Ollama, Together) may reject these. Confirm provider support before designing a `tool_loop` flow.
+
+**LLM extension config (rill-ext 0.19.6 unified prompt API):** `max_turns` and `max_errors` are factory-level keys in `rill-config.json` (per-call `tool_loop` `max_turns` is a positional override). Forward additional vendor-specific fields via the factory `extra` dict; reserved keys (`messages`, `model`, `system`, `temperature`, `max_tokens`, `stream`, `response_format`) are rejected at factory init with `RILL-R001`. The standalone `messages()` verb was removed; `message()` accepts a string or a list of message dicts. Result dicts expose `.messages` (parts-shaped history); the latest assistant text lives at `$result.messages[-1].parts[0].text`.
+
+**Model-specific knobs (no shared abstraction):** rill-ext exposes only the fields that are common across providers (`api_key`, `model`, `temperature`, `max_tokens`, `system`, `embed_model`, `base_url`, `max_retries`, `timeout`, `max_turns`, `max_errors`). Reasoning controls (Anthropic `thinking`, OpenAI `reasoning_effort` / `reasoning.effort`, Gemini `thinkingConfig`), provider-only sampling (`top_k`, `top_p`, `frequency_penalty`, …), structured-output toggles, cache hints, and safety controls vary per provider and per model and have no common surface. The `extra` factory dict is the only path: look up the chosen model's API reference for the exact field names and place them under `extensions.config.<mount>.extra` in `rill-config.json`. Confirm the field is not in the reserved-key list (or it will halt at factory init), and confirm the model supports it (e.g., Anthropic `thinking` works on Claude 3.7+ and Sonnet 4 only). Document the chosen knobs and their source in the blueprint Extension Plan so the engineer transcribes them verbatim.
 
 ### 4. Prefer `generate` over `message` for structured LLM output
 
@@ -133,9 +161,9 @@ Any prompt that is multiline OR contains a `{param}` interpolation MUST live in 
 }
 ```
 
-**Resolution rule:** file path relative to `basePath` becomes the callable name with `/` replaced by `_`. `prompts/research.prompt.md` → `$prompt.research`. `prompts/agents/triage.prompt.md` → `$prompt.agents_triage`.
+**Resolution rule:** file path relative to `basePath` becomes the callable name with `/` replaced by `_`. Hyphens in any path segment also convert to underscores (rill-ext 0.19.2 prompt-md fix). `prompts/research.prompt.md` → `$prompt.research`. `prompts/agents/triage.prompt.md` → `$prompt.agents_triage`. `prompts/summarize-email.prompt.md` → `$prompt.summarize_email`.
 
-**Output mode:** prefer `output: list` with `@@ system` and `@@ user` sections — the resulting `[{role, content}]` shape passes directly into `$ai.messages()` on any provider. Use `output: string` only when the caller needs a single rendered string.
+**Output mode (rill-ext 0.19.2 prompt-md):** mode is inferred from body content — presence of any `@@ role` marker (`@@ system`, `@@ user`, `@@ assistant`) yields a list-mode prompt that resolves to `list[dict[role, content]]`; absence yields a string-mode prompt. Prefer list-mode with `@@ system` and `@@ user` sections — the resulting list passes directly into `$ai.message()` on any provider (the standalone `messages()` verb was removed in rill-ext 0.19.6). Do NOT write `output:` in the frontmatter; the field is ignored. Do plan the intended mode in the blueprint Prompt Inventory so the engineer adds the right markers. Allowed `@@ role` values are `system`, `user`, `assistant`; any other role triggers `RILL-R001`.
 
 **Parameter rules:** scalar params only (string, number, bool). Format dicts and lists in rill BEFORE the prompt call (e.g., `.join("\n---\n")`) and pass the resulting string.
 
@@ -199,7 +227,7 @@ Do NOT create a custom extension for:
 ALL extensions MUST appear in `extensions.mounts` in `rill-config.json`:
 - **Bundled** extensions: `@rcrsr/rill/ext/<name>` (listed in the "Import" column of the extension index)
 - **Vendor** extensions: their npm package name
-- **Custom** extensions: `./dist/extensions/<file>.js`
+- **Custom** extensions: `./extensions/<file>.ts` (rill loads TypeScript directly at runtime; no precompile)
 
 ## Blueprint schema
 
@@ -236,7 +264,7 @@ generated: <ISO-8601 timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`>
 
 ## Custom
 - mount: <namespace>
-  source: ./dist/extensions/<file>.js
+  source: ./extensions/<file>.ts
   npm wrapped: <package or "none">
   purpose: <one sentence>
   exposed functions: <list of signatures>
@@ -272,6 +300,7 @@ Step 2: ...
 
 # Design Checklist Results
 
+- [ ] Every extension call site in the Pipeline Blueprint matches a signature from the Extension Surface Inventory (parameter order, parameter types, return shape)
 - [ ] Every multiline or parameterized prompt is in prompts/*.prompt.md
 - [ ] @rcrsr/rill-ext-prompt-md is mounted whenever an LLM extension is used
 - [ ] fan vs seq selection follows I/O rules (fan = pure transforms, seq = side effects / sequential I/O)
@@ -281,7 +310,7 @@ Step 2: ...
 - [ ] tool_loop only when LLM must decide what to fetch; provider compatibility confirmed
 - [ ] generate uses legacy dict schema when output shape is known; message used for free-form text
 - [ ] Every exec command has allowedArgs (static args) or blockedArgs (dynamic args)
-- [ ] Bundled extensions use @rcrsr/rill/ext/<name>; vendor uses npm name; custom uses ./dist/extensions/<file>.js
+- [ ] Bundled extensions use @rcrsr/rill/ext/<name>; vendor uses npm name; custom uses ./extensions/<file>.ts
 - [ ] Script stays under 50 lines (split into scripts/ if over)
 ```
 

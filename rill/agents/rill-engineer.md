@@ -28,13 +28,19 @@ Every invocation includes a path to the blueprint at `<package>/.rill-design/blu
 
 ## First Step: Consult Documentation
 
-If the orchestrator's prompt does not include the rill language reference, fetch it with `curl -sL` (Bash, not WebFetch — WebFetch summarizes and loses syntax detail):
+If the orchestrator's prompt does not include the rill language reference, fetch it with `curl -sL` (Bash, not WebFetch — WebFetch summarizes and loses syntax detail).
+
+For writing rill scripts, fetch the full bundle:
 
 ```
-curl -sL https://raw.githubusercontent.com/rcrsr/rill/refs/heads/main/docs/ref-llm.txt
+curl -sL https://raw.githubusercontent.com/rcrsr/rill/refs/heads/main/docs/ref-llms-full.txt
 ```
 
-The skill typically pre-fetches and includes it. Skip if already provided.
+For non-script tasks (rill-config.json, TypeScript extensions, `.prompt.md` files), no rill reference is needed — those file types do not contain rill syntax.
+
+If you need only a single topic fragment, the documents live at `https://raw.githubusercontent.com/rcrsr/rill/refs/heads/main/docs/llm/<topic>.txt` where `<topic>` is one of: `cheatsheet`, `anti-patterns`, `control-flow`, `errors`, `types`, `callables`, `stdlib`, `style`.
+
+The skill typically pre-fetches and includes the right fragments. Skip if already provided.
 
 ## Known Documentation Errata (trust this over fetched docs)
 
@@ -161,6 +167,8 @@ dict[b: "b"] -> dict(b: string, a: string = "a")   # dict[a: "a", b: "b"]
 
 Entry-point closures MUST be fully annotated: a description on the closure and a description on every parameter.
 
+**Entry-point closure parameters bind from `rill-run` CLI flags.** When `rill-config.json` declares `main: "script.rill:closure_name"`, `rill-run` enters handler mode and parses each closure parameter as a `--<param_name> <value>` flag (booleans accept `--<param_name>` as a true switch). Flag names match parameter names verbatim — keep them snake_case for both rill style and CLI ergonomics. Required params with no default cause `rill-run` to fail when the corresponding flag is omitted; provide defaults (`|n: number = 50|`) only when a sensible default exists, otherwise leave the param required so callers must specify it.
+
 ## Pipe Scoping: Eager vs Deferred
 
 ```rill
@@ -240,21 +248,30 @@ Extensions load via `rill-config.json` under `extensions.mounts`. Scripts use `u
 $ai.message("hello") => $s
 $s -> seq({ log })
 
-# Resolve to result dict
+# Resolve to result dict (parts-shaped messages history)
 $ai.message("hello")() => $result
-$result.content -> log
+$result.messages[-1].parts[0].text -> log
 ```
 
 Stream rules: single-pass (re-iterating causes RILL-R002); iterate chunks first, then call `$s()` for resolution; use `fold("", { ... })` to accumulate.
 
 **Provider swapping:** change the `mounts` package in config; scripts stay identical.
 
-**LLM functions:** `message`, `messages`, `embed`, `embed_batch`, `tool_loop`, `generate`.
+**LLM functions (rill-ext 0.19.6 unified prompt API):** `message`, `embed`, `embed_batch`, `tool_loop`, `generate`. The standalone `messages()` verb was removed; `message()` accepts either a string or a list of message dicts. `max_turns` and `max_errors` are factory-level config; `tool_loop` takes `max_turns` as a positional argument (use `0` to inherit the factory value).
+
+**Model-specific knobs:** there is no common abstraction for reasoning/extended-thinking, sampling extras, cache hints, or safety controls — each provider and model has its own surface. If the blueprint Extension Plan calls for any such field (e.g., Anthropic `thinking`, OpenAI `reasoning_effort`, Gemini `thinkingConfig`, `top_k`, `top_p`), place it verbatim under `extensions.config.<mount>.extra` in `rill-config.json`. Do not invent shapes and do not move these fields out of `extra`. Reserved keys (`messages`, `model`, `system`, `temperature`, `max_tokens`, `stream`, `response_format`) are rejected at factory init with `RILL-R001`. If the blueprint omits a field that the requirements imply you need, return a Blueprint gap rather than guessing the schema.
+
+**Result dict shape** (`message`, `tool_loop`):
+- `result.messages` is the parts-shaped conversation history (`list[dict[role, parts]]`).
+- Latest assistant text: `$result.messages[-1].parts[0].text`.
+- `result.stop_reason`, `result.usage.input`, `result.usage.output` are also available.
 
 **Tool loop call shape:**
 
 ```rill
-$ai.tool_loop("Weather in Paris?", dict[get_weather: $weather])() => $result
+# Positional max_turns (0 = inherit factory max_turns)
+$ai.tool_loop("Weather in Paris?", dict[get_weather: $weather], 0)() => $result
+$result.messages[-1].parts[0].text -> log
 ```
 
 **KV / Filesystem / Vector DB:** see the extension index for per-extension function lists. Scripts call them with the mount namespace from `rill-config.json`.
@@ -333,10 +350,9 @@ $items -> fold(dict[seen: list[], result: list[]], {
 | RILL-L001 | Unterminated string literal |
 | RILL-P001 | Unexpected token |
 | RILL-P007 | Space between keyword and `[` |
-| RILL-R001 | Parameter type mismatch |
+| RILL-R001 | Parameter type mismatch; also: factory-time extension config validation failure |
 | RILL-R002 | Operator type mismatch / list element type mismatch / stream consumed |
 | RILL-R003 | Method receiver type mismatch |
-| RILL-R004 | Type conversion failure / return type assertion failure / extension error |
 | RILL-R005 | Undefined variable |
 | RILL-R009 | Property not found in dict |
 | RILL-R010 | Iteration limit exceeded |

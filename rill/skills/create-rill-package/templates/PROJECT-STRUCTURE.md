@@ -35,9 +35,8 @@ package-name/
 | Target | Command | Purpose |
 |--------|---------|---------|
 | `dev` | `rill-run .` | Run the package in development mode. Replaces `run.sh`. |
-| `predev` | `tsc` | Auto-runs before `dev` to compile TypeScript extensions to `dist/`. Only if extensions exist. |
-| `check` | `tsc --noEmit` | Type-check extensions without emitting. Only if extensions exist. |
-| `build` | `tsc && rill-build . --output build` | Compile extensions and bundle the package for deployment. |
+| `check` | `tsc --noEmit` | Type-check extensions without emitting. Only if extensions exist. Used for CI validation; rill loads `.ts` files directly at runtime. |
+| `build` | `rill-build . --output build` | Bundle the package for deployment. |
 | `serve` | `node server.js` | Start the HTTP agent server from the bundled output. Requires `server.js`. |
 
 ## Conventions

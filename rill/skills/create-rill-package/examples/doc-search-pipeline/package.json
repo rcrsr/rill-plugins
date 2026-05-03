@@ -5,9 +5,8 @@
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit",
-    "predev": "tsc",
     "dev": "rill-run .",
-    "build": "tsc && rill-build . --output build"
+    "build": "rill-build . --output build"
   },
   "dependencies": {
     "@rcrsr/rill": "latest",

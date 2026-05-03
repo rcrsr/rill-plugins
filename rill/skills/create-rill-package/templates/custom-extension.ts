@@ -3,38 +3,56 @@
  *
  * Purpose: DESCRIPTION
  *
- * Mounted in rill-config.json as "./dist/extensions/ext-name.js"
+ * Mounted in rill-config.json as "./extensions/ext-name.ts"
  * Used in rill scripts as: use<ext:namespace> => $ext
  */
 
 import {
+  type ExtensionFactoryCtx,
   type ExtensionFactoryResult,
   type ExtensionManifest,
   type ExtensionConfigSchema,
-  type RillParam,
   type RillFunction,
+  type RillParam,
   type RillValue,
+  type RuntimeContext,
   RuntimeError,
   toCallable,
   structureToTypeValue,
 } from "@rcrsr/rill";
+
+const PROVIDER = "EXTENSION_NAME";
 
 // ---------------------------------------------------------------------------
 // Config (matches extensions.config.NAMESPACE in rill-config.json)
 // ---------------------------------------------------------------------------
 
 interface ExtensionConfig {
-  // Add fields matching your rill-config.json config block
+  // Add fields matching your rill-config.json config block.
+  // All fields use snake_case at the rill boundary.
   // api_key: string;
   // timeout?: number;
 }
 
 // ---------------------------------------------------------------------------
 // Extension factory
+//
+// Signature: (config, ctx: ExtensionFactoryCtx) => ExtensionFactoryResult
+// Factory-scope ctx exposes only `{ registerErrorCode, signal }`.
+// Host-scope helpers like `invalidate` live on `RuntimeContext` (per-call).
+// Validate configuration with `throw new RuntimeError('RILL-R001', ...)`.
 // ---------------------------------------------------------------------------
 
-function createExtension(config: ExtensionConfig): ExtensionFactoryResult {
-  // Read config with defaults
+function createExtension(
+  config: ExtensionConfig,
+  _ctx: ExtensionFactoryCtx,
+): ExtensionFactoryResult {
+  // Validate config at factory init; failures use RILL-R001.
+  // if (!config.api_key) {
+  //   throw new RuntimeError('RILL-R001', 'EXTENSION_NAME: api_key is required');
+  // }
+
+  // Read config with defaults.
   // const timeout = config.timeout ?? 10_000;
 
   // ---- Define each function ----
@@ -48,21 +66,34 @@ function createExtension(config: ExtensionConfig): ExtensionFactoryResult {
 
   const exampleFn: RillFunction = {
     params: [exampleParam],
-    fn: async (args) => {
+    fn: async (args, runCtx: RuntimeContext) => {
       const input = args["input"] as string;
 
-      // Validate input
+      // Surface recoverable failures as invalid RillValues using
+      // generic atoms (#AUTH, #FORBIDDEN, #NOT_FOUND, #RATE_LIMIT,
+      // #QUOTA_EXCEEDED, #UNAVAILABLE, #CONFLICT, #PROTOCOL,
+      // #INVALID_INPUT, #TIMEOUT, #DISPOSED, #TYPE_MISMATCH).
+      // Host scripts catch these with `guard`/`retry`.
       if (!input) {
-        throw new RuntimeError("RILL-R004", "ext-name: input is required");
+        return runCtx.invalidate(
+          new Error("EXTENSION_NAME: input is required"),
+          {
+            code: "INVALID_INPUT",
+            provider: PROVIDER,
+            raw: { kind: "missing_input" },
+          },
+        );
       }
 
-      // Implementation here
+      // Implementation here.
       return input;
     },
     annotations: {
       description: "What this function does",
     },
-    // Return type descriptor (used by rill type system)
+    // Return type descriptor: prefer rich shapes via structureToTypeValue
+    // (e.g., kind: 'dict' with fields, kind: 'list' with element). Use
+    // anyTypeValue only for truly heterogeneous results.
     returnType: structureToTypeValue({ kind: "string" }),
   };
 
@@ -82,8 +113,8 @@ function createExtension(config: ExtensionConfig): ExtensionFactoryResult {
 // ---------------------------------------------------------------------------
 
 export const configSchema: ExtensionConfigSchema = {
-  // Declare config fields and their types for validation
-  // api_key: { type: "string" },
+  // Declare config fields and their types for validation.
+  // api_key: { type: "string", required: true, secret: true },
   // timeout: { type: "number" },
 };
 
@@ -108,7 +139,13 @@ export const extensionManifest: ExtensionManifest = {
 // Param types (for RillParam.type):
 //   Same syntax as above.
 //
+// Boundary keys:
+//   Param names, args keys, returned dict-literal keys, and field names in
+//   `returnType` declarations MUST be snake_case. Map vendor SDK camelCase
+//   shapes at the boundary.
+//
 // Errors:
-//   throw new RuntimeError("RILL-R004", "message")
-//   Runtime wraps this as a rill extension error.
+//   Factory-init validation: throw new RuntimeError('RILL-R001', '...').
+//   Per-call recoverable failures: return runCtx.invalidate(err, meta) with
+//   one of the pre-registered atoms above.
 // ---------------------------------------------------------------------------

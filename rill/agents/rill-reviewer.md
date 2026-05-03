@@ -21,8 +21,17 @@ You write only the review report (your reply to the orchestrator). You do not mo
 
 - **Package directory path** (absolute)
 - **Blueprint path:** `<package>/.rill-design/blueprint.md`
+- **Rill reference fragments** (from the orchestrator): `cheatsheet`, `errors`, `anti-patterns`. The orchestrator typically embeds these in your prompt.
 
-If either is missing, return a single-line failure: `BLOCKED: missing <input>`.
+If the package directory or blueprint is missing, return a single-line failure: `BLOCKED: missing <input>`.
+
+If the reference fragments were not embedded, fetch them with `curl -sL`:
+
+```
+curl -sL https://raw.githubusercontent.com/rcrsr/rill/refs/heads/main/docs/llm/cheatsheet.txt
+curl -sL https://raw.githubusercontent.com/rcrsr/rill/refs/heads/main/docs/llm/errors.txt
+curl -sL https://raw.githubusercontent.com/rcrsr/rill/refs/heads/main/docs/llm/anti-patterns.txt
+```
 
 ## Review steps
 
@@ -51,7 +60,7 @@ Read the blueprint, then read each implementation file and grade against the cor
 #### Conformance checklist
 
 **rill-config.json**
-- [ ] All extensions from blueprint Extension Plan appear in `extensions.mounts` with the correct mount path (bundled = `@rcrsr/rill/ext/<name>`; vendor = npm name; custom = `./dist/extensions/<file>.js`)
+- [ ] All extensions from blueprint Extension Plan appear in `extensions.mounts` with the correct mount path (bundled = `@rcrsr/rill/ext/<name>`; vendor = npm name; custom = `./extensions/<file>.ts`)
 - [ ] All config keys called out in the blueprint appear under `extensions.config`
 - [ ] `${VAR_NAME}` placeholders used for secrets, no literal API keys
 - [ ] `main` field references the correct script and closure name from the blueprint
@@ -59,17 +68,21 @@ Read the blueprint, then read each implementation file and grade against the cor
 - [ ] No task instructions hidden in `system` field; identity-only context if any
 
 **Prompt files**
-- [ ] Every entry in blueprint Prompt Inventory has a corresponding `prompts/<path>.prompt.md` file
-- [ ] Frontmatter declares `description`, `params`, and `output` exactly as the blueprint specifies
+- [ ] Every entry in blueprint Prompt Inventory has a corresponding `prompts/<path>.prompt.md` file (hyphens in filename segments convert to `_` in the resolved callable name)
+- [ ] Frontmatter declares `description` and `params` (the `output:` field is removed in rill-ext 0.19.2 prompt-md — output is inferred from body)
 - [ ] Param interpolation uses `{name}` only for scalars; no dict or list interpolation
-- [ ] `output: list` files use `@@ system` and `@@ user` markers; `output: string` files do not
+- [ ] List-mode prompts (per blueprint) use `@@ system` / `@@ user` / `@@ assistant` markers; string-mode prompts contain no `@@ role` marker
+- [ ] `@@ role` markers use only `system`, `user`, or `assistant` (rill-ext 0.19.6 prompt-md allowlist)
 
 **Custom TypeScript extensions**
 - [ ] Every entry in blueprint Custom Extension API Designs has a corresponding `extensions/<file>.ts`
 - [ ] Function signatures match the blueprint (parameter names, types, return types)
+- [ ] Factory signature is `(config, ctx: ExtensionFactoryCtx)` (rill 0.19.0+); ctx accepted even when unused
 - [ ] All configuration comes from the factory `config` parameter, not from `process.env` directly
-- [ ] Errors use RILL-R004 format
-- [ ] Extension exports the expected value for host registration
+- [ ] Param names, args keys, returned dict-literal keys, and `returnType` field names are snake_case (rill-ext 0.19.3 boundary rule)
+- [ ] Recoverable failures use `runCtx.invalidate(err, { code, provider, raw })` with generic atoms (`#AUTH`, `#FORBIDDEN`, `#NOT_FOUND`, `#RATE_LIMIT`, `#QUOTA_EXCEEDED`, `#UNAVAILABLE`, `#CONFLICT`, `#PROTOCOL`, `#INVALID_INPUT`, `#TIMEOUT`, `#DISPOSED`, `#TYPE_MISMATCH`); no `RuntimeError('RILL-R004', ...)` (retired)
+- [ ] Factory-time config validation throws `RuntimeError('RILL-R001', ...)`
+- [ ] Extension exports `extensionManifest` (factory + configSchema + version) for host registration
 
 **Rill scripts**
 - [ ] Every PIPELINE in the blueprint has a corresponding `.rill` file

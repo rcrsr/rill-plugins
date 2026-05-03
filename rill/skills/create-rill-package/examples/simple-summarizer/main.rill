@@ -13,12 +13,13 @@ use<ext:prompt> => $prompt
   "Summarizing {$input -> .len} characters..." -> log
 
   # Build messages from externalized prompt and call LLM
+  # (prompt-md list-mode prompts feed directly into message() in rill-ext 0.19.6)
   $prompt.summarize($input) => $messages
-  $ai.messages($messages)() => $result
+  $ai.message($messages)() => $result
 
-  # Return structured result
+  # Return structured result; messages is parts-shaped history
   dict[
-    summary: $result.content,
+    summary: $result.messages[-1].parts[0].text,
     usage: $result.usage,
   ]
 

@@ -46,12 +46,13 @@ use<ext:prompt> => $prompt
     => $context
 
   # Build messages from externalized prompt and call LLM
+  # (prompt-md list-mode prompts feed directly into message() in rill-ext 0.19.6)
   $prompt.answer($query, $context) => $messages
-  $ai.messages($messages)() => $response
+  $ai.message($messages)() => $response
 
-  # Return structured result
+  # Return structured result; messages is parts-shaped history
   dict[
-    answer: $response.content,
+    answer: $response.messages[-1].parts[0].text,
     sources: $sources -> fan({ dict[url: $.url, title: $.title, score: $.score] }),
     usage: $response.usage,
   ]

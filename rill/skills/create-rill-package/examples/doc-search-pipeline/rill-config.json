@@ -8,7 +8,7 @@
       "vectors": "@rcrsr/rill-ext-qdrant",
       "fs": "@rcrsr/rill-ext-fs-s3",
       "prompt": "@rcrsr/rill-ext-prompt-md",
-      "crawler": "./dist/extensions/ext-crawler.js"
+      "crawler": "./extensions/ext-crawler.ts"
     },
     "config": {
       "ai": {
