@@ -241,6 +241,13 @@ ALL extensions MUST appear in `extensions.mounts` in `rill-config.json`:
 - **Vendor** extensions: their npm package name
 - **Custom** extensions: `./extensions/<file>.ts` (rill loads TypeScript directly at runtime; no precompile)
 
+## Config-key placeholder convention
+
+Under each Bundled / Vendor entry's `config keys:` block, write the literal value the engineer should transcribe into `rill-config.json`, not prose:
+- For env-resolved fields, write `"${env.VAR_NAME}"` (the dotted `env.` form). The skill scaffold copies this verbatim into `extensions.config` before the Phase 4.5 surface probe, and `rill describe project --stubs` substitutes `"x"` for any unset `${env.VAR}` so factories construct without a populated `.env`. Step 7b later rewrites `${env.VAR}` to `${VAR}` (the runtime resolution form).
+- For literal fields (URLs, model names, numeric tuning, booleans), write the literal directly: `"https://api.example.com/v1"`, `2`, `false`.
+- Avoid prose like "env var X" or "API key from environment". The engineer is a transcriber at this step, not an interpreter.
+
 ## Blueprint schema
 
 Write the blueprint to `<package>/.rill-design/blueprint.md` using this exact structure. Sections may be empty (`(none)`) when not applicable, but every heading must be present.
@@ -266,13 +273,15 @@ generated: <ISO-8601 timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`>
 - mount: <namespace>
   package: @rcrsr/rill/ext/<name>
   purpose: <one sentence>
-  config keys: <list>
+  config keys:
+    <key.path>: <literal value or "${env.VAR_NAME}">
 
 ## Vendor
 - mount: <namespace>
   package: <npm-package>
   purpose: <one sentence>
-  config keys: <list>
+  config keys:
+    <key.path>: <literal value or "${env.VAR_NAME}">
 
 ## Custom
 - mount: <namespace>

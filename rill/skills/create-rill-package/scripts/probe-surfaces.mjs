@@ -85,29 +85,45 @@ const lines = [
 ];
 
 for (const { mount, parsed } of surfaces) {
-  const pkg = parsed?.package ?? "unknown";
-  const ver = parsed?.version ?? "unknown";
-  lines.push(`## ${mount} (${pkg}@${ver})`);
+  lines.push(`## ${mount}`);
   lines.push("");
-  const callables = Array.isArray(parsed?.callables) ? parsed.callables : [];
-  if (callables.length === 0) {
+  const callables = parsed?.mounts?.[mount] ?? {};
+  const entries = Object.entries(callables);
+  if (entries.length === 0) {
     lines.push("_(no callables reported)_");
     lines.push("");
     continue;
   }
-  for (const c of callables) {
-    if (c?.isProperty) continue;
-    const params = Array.isArray(c?.params)
-      ? c.params
-          .map((p) => `${p?.name ?? "?"}: ${p?.typeDisplay ?? "unknown"}`)
+  for (const [name, info] of entries) {
+    if (info?.isProperty) {
+      const t = info?.typeDisplay ?? "unknown";
+      lines.push(`- property \`${name}\` -> ${t}`);
+      continue;
+    }
+    const params = Array.isArray(info?.params)
+      ? info.params
+          .map((p) => {
+            const def =
+              p?.defaultValue !== null && p?.defaultValue !== undefined
+                ? ` = ${JSON.stringify(p.defaultValue)}`
+                : "";
+            return `${p?.name ?? "?"}: ${p?.typeDisplay ?? "unknown"}${def}`;
+          })
           .join(", ")
       : "";
-    const ret = c?.returnTypeDisplay ?? "unknown";
-    lines.push(`### ${c?.name ?? "?"}(${params}) -> ${ret}`);
-    const desc = c?.annotations?.description?.trim();
-    if (desc) lines.push(desc);
-    lines.push("");
+    const ret = info?.returnTypeDisplay ?? "unknown";
+    lines.push(`- \`${name}(${params}) -> ${ret}\``);
+    const fields = info?.returnType?.fields;
+    if (fields && typeof fields === "object") {
+      const shape = Object.entries(fields)
+        .map(([k, v]) => `${k}: ${v?.type?.kind ?? "unknown"}`)
+        .join(", ");
+      lines.push(`    return shape: dict[${shape}]`);
+    }
+    const desc = info?.annotations?.description?.trim();
+    if (desc) lines.push(`    ${desc}`);
   }
+  lines.push("");
 }
 
 if (failures.length > 0) {

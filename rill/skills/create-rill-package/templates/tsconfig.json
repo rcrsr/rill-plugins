@@ -1,4 +1,12 @@
 {
   "extends": "./.rill/tsconfig.rill.json",
+  "compilerOptions": {
+    "ignoreDeprecations": "6.0",
+    "baseUrl": "./.rill/npm",
+    "paths": {
+      "*": ["node_modules/@types/*", "node_modules/*"]
+    },
+    "skipLibCheck": true
+  },
   "include": ["extensions/**/*.ts"]
 }

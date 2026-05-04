@@ -7,7 +7,7 @@ import { execSync } from "node:child_process";
 import os from "node:os";
 
 const NODE_FLOOR = [22, 16, 0];
-const RILL_FLOOR = [0, 19, 4];
+const RILL_FLOOR = [0, 19, 5];
 const allowNonLinux = process.argv.includes("--allow-non-linux");
 
 function tryExec(cmd) {
