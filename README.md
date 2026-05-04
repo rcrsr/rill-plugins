@@ -6,6 +6,15 @@ This repository is the plugin source. It is distributed through the [`rcrsr/clau
 
 ## Installation
 
+If you previously installed the plugin from the old `rcrsr/rill-plugins` marketplace, remove it first so the new `rill-make` plugin resolves cleanly:
+
+```
+/plugin uninstall rill@rill-plugins
+/plugin marketplace remove rill-plugins
+```
+
+Then add the current marketplace and install:
+
 ```
 /plugin marketplace add rcrsr/claude-plugins
 /plugin install rill-make@claude-plugins

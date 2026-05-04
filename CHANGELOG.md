@@ -24,6 +24,10 @@ The plugin version tracks the targeted `@rcrsr/rill-cli` minor (0.19.x).
 - Explicit user-responsibility statement for external vendor accounts, credentials, and resource provisioning.
 - `CLAUDE.md`, `ARCHITECTURE.md`, `GUIDE.md`, `README.md` documenting plugin layout, agent split, blueprint schema, and end-user walkthrough.
 
+### Migration
+
+- Users on the previous `rill@rill-plugins` install must remove it before installing `rill-make`. Run `/plugin uninstall rill@rill-plugins` and `/plugin marketplace remove rill-plugins`, then add `rcrsr/claude-plugins` and install `rill-make@claude-plugins`.
+
 ### Notes
 
 - Targets `@rcrsr/rill-cli >= 0.19.5`. Phase 4.5 install order is install → write stub configs → probe surfaces (the 0.19.5 install no longer invokes the extension factory).

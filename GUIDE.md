@@ -79,7 +79,16 @@ The `rill` binary must resolve on PATH and report version `>= 0.19.5`.
 
 ## 2. Install the Claude Code Plugin
 
-From any directory, inside a Claude Code session:
+From any directory, inside a Claude Code session.
+
+If you previously installed the plugin from the old `rcrsr/rill-plugins` marketplace (where it was published as `rill@rill-plugins`), remove the old install first:
+
+```
+/plugin uninstall rill@rill-plugins
+/plugin marketplace remove rill-plugins
+```
+
+Then add the current marketplace and install:
 
 ```
 /plugin marketplace add rcrsr/claude-plugins
