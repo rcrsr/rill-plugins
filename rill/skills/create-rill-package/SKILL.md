@@ -9,6 +9,8 @@ argument-hint: "[spec-file-or-description]"
 
 You orchestrate creation of a complete rill package. Your job is sequencing — design decisions belong to the `rill:rill-architect` agent, implementation to `rill:rill-engineer`, and validation to `rill:rill-reviewer`. Follow the phases in order. Do NOT skip phases or combine them.
 
+This skill targets `@rcrsr/rill-cli >= 0.19.4`. The unified `rill` binary handles bootstrapping, extension installation, type-checking, building, and execution. The skill drives that CLI rather than crafting `package.json` and `rill-config.json` from scratch.
+
 See `rill/ARCHITECTURE.md` for the agent split, blueprint schema, and revision history.
 
 ## User Responsibility for External Vendors
@@ -20,43 +22,42 @@ The user owns all external vendor accounts, API keys, credentials, quotas, billi
 This skill includes templates and examples. Use them as structural guides for output consistency.
 
 **Templates** (in `${CLAUDE_SKILL_DIR}/templates/`):
-- `PROJECT-STRUCTURE.md` - Standard directory layout, npm targets, and file naming conventions
-- `package.json` - npm package scaffold with rill runtime, CLI, agent, and TypeScript tooling
-- `tsconfig.json` - TypeScript config targeting ES2022, compiles `extensions/` to `dist/`
-- `rill-config.json` - Extension mount/config skeleton with package metadata (`name`, `version`)
-- `custom-extension.ts` - TypeScript extension scaffold with factory, config validation, error handling
-- `env.template` - Environment variable template for secrets (copied to `.env`)
-- `gitignore` - Ignore rules for `node_modules/`, `dist/`, `build/`, `.env`
-- `server.js` - HTTP agent server using `@rcrsr/rill-agent` (optional, for deployment)
+- `PROJECT-STRUCTURE.md` — directory layout, file ownership, run/build commands
+- `tsconfig.json` — minimal tsconfig that extends `.rill/tsconfig.rill.json` (only used when custom extensions exist)
+- `custom-extension.ts` — TypeScript extension scaffold with factory, config validation, error handling
+- `env.template` — default lines (`# VAR=hint`) consulted by `scaffold-env.mjs` when generating a trimmed `.env`
+- `server.js` — HTTP agent server using `@rcrsr/rill-agent` (copied by `scaffold-server.mjs` when HTTP deployment is requested)
+
+**Scripts** (in `${CLAUDE_SKILL_DIR}/scripts/`):
+- `preflight.mjs` — Phase 0 environment checks (platform, node, npm, rill-cli semver)
+- `probe-surfaces.mjs <package-dir>` — Phase 4.5 probe + aggregate; runs `rill describe project --stubs --mount X` per mount and writes `extension-surfaces.md`
+- `append-gitignore.mjs <package-dir>` — Phase 7a; appends canonical entries idempotently
+- `scaffold-server.mjs <package-dir>` — Phase 7a; writes root `package.json`, copies `server.js`, runs `npm install`
+- `scaffold-env.mjs <package-dir>` — Phase 7b; reads `rill-config.json` `${VAR_NAME}` references and writes a trimmed `.env`
+
+All mechanical filesystem and version-comparison work runs through these scripts. Do not improvise inline node/bash equivalents — escape handling and parsing rules differ between agent renderings and the scripts capture them once.
+
+There is no `package.json` template. `rill bootstrap` writes a scoped `package.json` inside `.rill/npm/`. A project-root `package.json` is only needed when HTTP serving (`server.js`) requires `@rcrsr/rill-agent` in root `node_modules/`; `scaffold-server.mjs` writes it.
+
+There is no `rill-config.json` template. `rill bootstrap` writes a starter, `rill install` populates mounts and config, and the engineer edits the result in Step 7b.
+
+There is no `.gitignore` template. `rill bootstrap` appends `.rill/`; `append-gitignore.mjs` appends `.env`, `build/`, `transcript/`, `dist/`.
 
 **Examples** (in `${CLAUDE_SKILL_DIR}/examples/`):
-- `simple-summarizer/` - Single script, one built-in extension (Anthropic LLM), no custom extensions
-- `doc-search-pipeline/` - Multiple scripts, 3 built-in extensions (OpenAI, Qdrant, S3) + 1 custom extension (web crawler), with entry point dispatcher
+- `simple-summarizer/` — single script, one built-in extension (Anthropic LLM), no custom extensions
+- `doc-search-pipeline/` — multiple scripts, 3 built-in extensions (OpenAI, Qdrant, S3) + 1 custom extension (web crawler), with entry point dispatcher
 
 ## Phase 0: Verify Prerequisites
 
-Before any other work, verify the environment meets rill's requirements. If any check fails, halt and instruct the user to resolve it before re-running the skill. Do NOT attempt to auto-install system prerequisites.
-
-1. **Platform check — Linux or WSL.** Run `uname -a`. The rill runtime targets Linux (including WSL2 on Windows). If the output shows `Darwin` (macOS) or a non-Linux kernel, warn the user that rill is not officially supported on their platform and ask whether to continue at their own risk.
-
-2. **Node.js check.** Run `node --version`. Require Node.js 20 or newer.
-
-3. **Global rill-cli check.** Run `which rill-run rill-check rill-build 2>/dev/null && npm ls -g @rcrsr/rill-cli 2>/dev/null`. If `@rcrsr/rill-cli` is not globally installed, halt and instruct the user: `npm install -g @rcrsr/rill-cli`.
-
-4. **npm check.** Run `npm --version`.
-
-Report each check's result:
+Before any other work, verify the environment meets rill's requirements. Run:
 
 ```
-PREREQUISITE CHECKS
--------------------
-Platform:        [Linux / WSL2 / other]  -> [PASS / FAIL]
-Node.js:         [version]                -> [PASS / FAIL]
-npm:             [version]                -> [PASS / FAIL]
-@rcrsr/rill-cli: [version or missing]     -> [PASS / FAIL]
+node ${CLAUDE_SKILL_DIR}/scripts/preflight.mjs
 ```
 
-Proceed to Phase 1 only if all checks pass.
+The script checks platform (Linux/WSL), Node.js (>= 22.16.0), npm, and `@rcrsr/rill-cli` (>= 0.19.4). It prints the report block and exits non-zero on any failure. If it fails, surface the printed report to the user and halt; do NOT attempt to auto-install system prerequisites. The platform check warns (not fails) on non-Linux kernels — re-run the script with `--allow-non-linux` after confirming with the user.
+
+Proceed to Phase 1 only when the script exits 0.
 
 ## Phase 1: Fetch Documentation
 
@@ -69,15 +70,15 @@ Base path: `https://raw.githubusercontent.com/rcrsr/rill/refs/heads/main/docs/`
 | Document | Path | When to fetch |
 |---|---|---|
 | Index | `ref-llms.txt` | Optional; small map of fragments |
-| Cheatsheet | `llm/cheatsheet.txt` | Always (≈5 KB; passed to architect, engineer config tasks, reviewer) |
-| Control flow | `llm/control-flow.txt` | If any rill scripts will be written (≈4 KB) |
-| Callables | `llm/callables.txt` | If any rill scripts will be written (≈6 KB) |
-| Errors | `llm/errors.txt` | Always for reviewer; for engineer if scripts use `guard`/`retry` (≈5 KB) |
-| Anti-patterns | `llm/anti-patterns.txt` | Always for reviewer (≈4 KB) |
-| Types | `llm/types.txt` | If scripts use parameterized type assertions or conversions (≈5 KB) |
-| Stdlib | `llm/stdlib.txt` | If scripts use string/list/dict methods or `enumerate`/`range` (≈3 KB) |
-| Style | `llm/style.txt` | Optional; included only on demand (≈3 KB) |
-| Full bundle | `ref-llms-full.txt` | When writing complete rill scripts (≈32 KB) |
+| Cheatsheet | `llm/cheatsheet.txt` | Always (~5 KB; passed to architect, engineer config tasks, reviewer) |
+| Control flow | `llm/control-flow.txt` | If any rill scripts will be written (~4 KB) |
+| Callables | `llm/callables.txt` | If any rill scripts will be written (~6 KB) |
+| Errors | `llm/errors.txt` | Always for reviewer; for engineer if scripts use `guard`/`retry` (~5 KB) |
+| Anti-patterns | `llm/anti-patterns.txt` | Always for reviewer (~4 KB) |
+| Types | `llm/types.txt` | If scripts use parameterized type assertions or conversions (~5 KB) |
+| Stdlib | `llm/stdlib.txt` | If scripts use string/list/dict methods or `enumerate`/`range` (~3 KB) |
+| Style | `llm/style.txt` | Optional; included only on demand (~3 KB) |
+| Full bundle | `ref-llms-full.txt` | When writing complete rill scripts (~32 KB) |
 
 Fetch with `curl -sL`. Example:
 
@@ -102,7 +103,7 @@ curl -sL https://raw.githubusercontent.com/rcrsr/rill/refs/heads/main/docs/ref-l
 | Phase 5 (architect — design data flow) | ✓ | ✓ | ✓ | – | – | – | – | ✓ | – |
 | Phase 6 (architect — custom TS extensions) | – | – | – | – | – | – | – | – | – |
 | Phase 7a (skill — scaffold) | – | – | – | – | – | – | – | – | ✓ if `serve` |
-| Phase 7b (engineer — rill-config.json) | – | – | – | – | – | – | – | – | – |
+| Phase 7b (engineer — rill-config.json edits) | – | – | – | – | – | – | – | – | – |
 | Phase 7c (engineer — TS extensions) | – | – | – | – | – | – | – | – | – |
 | Phase 7d (engineer — prompt files) | – | – | – | – | – | – | – | – | – |
 | Phase 7e (engineer — rill scripts) | – | – | – | – | – | ✓ | – | ✓ | – |
@@ -113,7 +114,7 @@ The "Surfaces" column refers to the Extension Surface Inventory (`<package>/.ril
 
 When including docs in an agent prompt, add: "The rill documentation is included below. Do NOT fetch it again."
 
-Phases 7b/c/d do not need the rill language reference — JSON, TypeScript, and `.prompt.md` files do not contain rill syntax. Engineer invocations for those steps run with no rill-doc payload.
+Phases 7b/c/d do not need the rill language reference — JSON edits, TypeScript, and `.prompt.md` files do not contain rill syntax.
 
 ## Phase 2: Gather Requirements
 
@@ -175,10 +176,10 @@ The architect designs against upstream docs alone unless given concrete examples
 
 1. **Discover sibling packages.** From the repo root, locate every `rill-config.json` outside the new package directory:
    ```
-   find . -name rill-config.json -not -path '*/node_modules/*' -not -path './<new-package>/*'
+   find . -name rill-config.json -not -path '*/node_modules/*' -not -path '*/.rill/*' -not -path './<new-package>/*'
    ```
 
-2. **Read each sibling `rill-config.json`** and extract the set of extension mounts (the keys of `extensions`, by package name or local path).
+2. **Read each sibling `rill-config.json`** and extract the set of extension mounts (the keys of `extensions.mounts`, by package name or local path).
 
 3. **Score overlap with the planned package.** Compare each sibling's mount set against the rill-ext packages the user requires (from Phase 3 answers and the requirements summary). A sibling is relevant if it shares at least one extension package (e.g., both use `@rcrsr/rill-ext-google-workspace`) or wraps a custom extension matching a planned capability (e.g., `extensions/html.ts`).
 
@@ -216,6 +217,12 @@ Use Agent with `subagent_type: "rill:rill-architect"` and a prompt containing:
 
 Wait for the architect to write the blueprint. Read the blueprint and surface any "Blueprint gaps" to the user before continuing.
 
+### Integration strategy gate
+
+When the blueprint includes a `## Custom` extension entry, confirm the architect recorded both `integration option:` and `rationale:` fields per the resolution order in `rill-architect.md` (option 1 = official SDK; option 2 = community SDK; option 3 = REST via fetch; option 4 = MCP bridge as last resort). If any custom entry is missing those fields, route the gap back to the architect.
+
+If any entry chose `4: MCP bridge`, halt before Phase 4.5 and request explicit user approval via `AskUserQuestion`, including the architect's rationale and the named MCP server. Do not proceed without an affirmative answer.
+
 ### NPM package discovery (orchestrator step)
 
 If the architect's blueprint specifies a custom extension that wraps an npm package, search for the best candidate before Phase 6:
@@ -223,51 +230,40 @@ If the architect's blueprint specifies a custom extension that wraps an npm pack
 2. Prefer high download counts, recent updates, TypeScript types
 3. Present candidates to the user via `AskUserQuestion` and record the chosen package in the blueprint before proceeding
 
-## Phase 4.5: Probe Extension Surfaces
+## Phase 4.5: Bootstrap, Install, and Probe Extension Surfaces
 
-The architect's Phase 4 selection is based on the extension index — text descriptions, not actual signatures. Before designing the data flow in Phase 5, capture the rich call surface of each chosen rill-ext package via `rill-describe`. This eliminates a class of design errors where the architect assumes a response shape the extension does not produce. Custom extensions are designed by the architect in Phase 6, so their surfaces are known by construction; this phase covers only npm-published rill-ext packages from the Phase 4 Extension Plan.
+The architect's Phase 4 selection is based on the extension index — text descriptions, not actual signatures. Before designing the data flow in Phase 5, install the chosen rill-ext packages and capture their call surfaces with `rill describe project --stubs`. This eliminates a class of design errors where the architect assumes a response shape the extension does not produce.
 
-1. **Create the probe directory** at `<package>/.rill-design/probe/`. This directory holds a throwaway scaffold solely for surface capture; it does not affect the final package install in Phase 7a.
+The install in this phase is the real install — it carries through to Phase 7. There is no throwaway probe directory.
 
-2. **Write `<package>/.rill-design/probe/package.json`** with:
-   - `"type": "module"` and `"private": true`
-   - Each rill-ext package from the blueprint Extension Plan (Bundled and Vendor) under `dependencies`, pinned to `^0.19` or whatever the latest published minor is
-   - `@rcrsr/rill-cli` under `devDependencies`
-
-3. **Write `<package>/.rill-design/probe/rill-config.json`** with:
-   - `"version": "0.19"`
-   - One mount per chosen extension under a stable shorthand name (e.g., `gws`, `ai`, `prompt`, `kv`, `s3`)
-   - For each mount, `config` with literal stub credential values (`"token": "x"`, `"api_key": "x"`, `"base_url": "https://example.test/v1"`, etc.). Use literal `"x"` rather than `${VAR_NAME}` references — the goal is to construct factories, not to run them
-   - Omit the `main` field; `rill-describe project` does not need a main script to enumerate mounts
-
-4. **Run** `cd <package>/.rill-design/probe && npm install`. Surface any install failure to the user — a chosen rill-ext package version may not resolve.
-
-5. **For each mount**, run:
+1. **Create the package directory** and the design subdirectory:
    ```
-   cd <package>/.rill-design/probe && npx rill-describe project --mount <name> > <name>.surface.json
-   ```
-   If a mount fails to construct (extension factory throws despite stub config), record the failure and surface it to the user — the chosen extension may need different scaffolding than literal `"x"` values.
-
-6. **Aggregate the captured surfaces** into a single human-readable digest at `<package>/.rill-design/extension-surfaces.md`:
-
-   ```markdown
-   # Extension Surface Inventory
-   Captured: <ISO-8601 timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`>
-   rill version: <rillVersion field from any surface JSON>
-
-   ## <mount-name> (<package>@<version>)
-
-   ### <callable_name>(<param>: <typeDisplay>, ...) -> <returnTypeDisplay>
-   <annotations.description if present>
-
-   ### ...
+   mkdir -p <package>/.rill-design
    ```
 
-   For each callable from each mount, list parameters with their `typeDisplay` and the `returnTypeDisplay`. Include the `annotations.description` when non-empty. Skip property accessors (`isProperty: true`) unless they are referenced in the requirements.
+2. **Bootstrap the package.** From the package directory, run `rill bootstrap`. This creates `.rill/npm/`, `.rill/tsconfig.rill.json`, a starter `rill-config.json`, and seeds gitignore files.
 
-7. **Pass the digest content to Phase 5** as a payload labeled "Extension Surface Inventory". The architect uses the digest to design call sites against authoritative signatures rather than guessed shapes.
+   If `rill bootstrap` exits non-zero, halt. Surface stderr to the user. Most likely causes: Node.js below 22.16.0 or a stale global `@rcrsr/rill-cli`. Do not attempt recovery without user direction.
 
-8. **Cleanup policy.** Leave `.rill-design/probe/` and `extension-surfaces.md` in place for the duration of the package build — Phase 6 may add custom extensions worth re-probing, and the surfaces are useful debugging context. Do not commit the probe directory; add `/.rill-design/probe/` to `.gitignore` in Step 7a. The digest at `extension-surfaces.md` is small enough to commit and serves as a frozen reference for the design.
+3. **Install each rill-ext package** from the blueprint Extension Plan (Bundled and Vendor sections). For each entry, use the mount namespace declared in the blueprint:
+   ```
+   rill install <package-name> --as <mount-from-blueprint>
+   ```
+   `--as` is mandatory: without it the mount is derived from the package name and may not match the blueprint. The architect records the mount under each `## Bundled` / `## Vendor` entry's `mount: <namespace>` line; transcribe that value verbatim.
+
+   If the blueprint Prompt Inventory contains any entry, also install `@rcrsr/rill-ext-prompt-md --as prompt`. Any LLM extension that consumes a prompt requires it; absence of prompt-md when prompts exist will fail at script load.
+
+   If any `rill install` call exits non-zero, surface the failed package name and stderr to the user. Use `AskUserQuestion` to ask: (a) try a different version, (b) drop the extension and revisit Phase 4 with the architect, (c) abort. Do not silently continue with a missing mount.
+
+4. **Probe and aggregate extension surfaces.** From the package directory, run:
+   ```
+   node ${CLAUDE_SKILL_DIR}/scripts/probe-surfaces.mjs <package-dir>
+   ```
+   The script reads the blueprint Extension Plan, runs `rill describe project --stubs --mount <mount>` for each Bundled/Vendor mount, writes per-mount JSON to `.rill-design/<mount>.surface.json`, and aggregates a human-readable digest at `.rill-design/extension-surfaces.md`. The `--stubs` flag synthesizes `"x"` for any unset string-typed env var so factories construct without populated `.env`; numeric and boolean config still requires real values. If a mount fails to construct under stubs, the script exits non-zero with the offending mount on stderr — surface to the user and revisit the Extension Plan.
+
+5. **Pass the digest content to Phase 5** as a payload labeled "Extension Surface Inventory". The architect uses the digest to design call sites against authoritative signatures rather than guessed shapes.
+
+6. **Persistence.** Leave `.rill-design/extension-surfaces.md` and the per-mount surface JSON files in place — they document the design and serve as a reference during implementation. The `.rill/npm/` install is gitignored automatically by `rill bootstrap`.
 
 ## Phase 5: Design Data Flow (architect)
 
@@ -278,7 +274,7 @@ Use Agent with `subagent_type: "rill:rill-architect"` and a prompt containing:
 - The cheatsheet, control-flow, and callables fragments from Phase 1 (`llm/cheatsheet.txt`, `llm/control-flow.txt`, `llm/callables.txt`)
 - The Extension Surface Inventory from Phase 4.5 (`<package>/.rill-design/extension-surfaces.md`)
 - Any architect notes or user clarifications since Phase 4
-- Instruction: "The rill cheatsheet, control-flow, and callables fragments are included below, along with the Extension Surface Inventory captured by `rill-describe`. Do NOT fetch documentation. Do NOT guess extension signatures or response shapes — use the Inventory as the authoritative call surface. Every extension call site you specify in the Pipeline Blueprint must match a signature from the Inventory: parameter order, parameter types, and the nested return shape. Extend the blueprint at `<package>/.rill-design/blueprint.md` with: Pipeline Blueprint section (per script), Prompt Inventory, and Design Checklist Results. Reply with a short summary and any blueprint gaps."
+- Instruction: "The rill cheatsheet, control-flow, and callables fragments are included below, along with the Extension Surface Inventory captured by `rill describe project --stubs`. Do NOT fetch documentation. Do NOT guess extension signatures or response shapes — use the Inventory as the authoritative call surface. Every extension call site you specify in the Pipeline Blueprint must match a signature from the Inventory: parameter order, parameter types, and the nested return shape. Extend the blueprint at `<package>/.rill-design/blueprint.md` with: Pipeline Blueprint section (per script), Prompt Inventory, and Design Checklist Results. Reply with a short summary and any blueprint gaps."
 
 Read the updated blueprint. Present the Pipeline Blueprint and Prompt Inventory sections to the user. Wait for approval before Phase 6.
 
@@ -298,58 +294,70 @@ If no custom extensions are needed, skip to Phase 7.
 
 ## Phase 7: Implement (engineer)
 
-ALL rill code, JSON config, prompt files, and TypeScript extensions go through the `rill:rill-engineer` agent. Each step references the frozen blueprint as the source of truth. The engineer does not redesign — if the blueprint is incomplete, the engineer will return a "Blueprint gap" message; route the gap back to Phase 5 or 6 with the architect.
+ALL rill code, JSON config edits, prompt files, and TypeScript extensions go through the `rill:rill-engineer` agent. Each step references the frozen blueprint as the source of truth. The engineer does not redesign — if the blueprint is incomplete, the engineer will return a "Blueprint gap" message; route the gap back to Phase 5 or 6 with the architect.
 
 ### Step 7a: Scaffold Project Environment (skill)
 
-Create the package directory structure and Node.js/TypeScript environment.
+The package was bootstrapped and rill-ext packages were installed in Phase 4.5. This step adds the remaining files.
 
 1. **Create directory structure** following `${CLAUDE_SKILL_DIR}/templates/PROJECT-STRUCTURE.md`:
    ```
-   [package-root]/
-     .rill-design/      # already created by architect
+   <package>/
      extensions/        # only if custom extensions exist
      scripts/           # only if multiple rill scripts
      prompts/           # only if LLM extensions exist
    ```
 
-2. **Generate `package.json`** from `${CLAUDE_SKILL_DIR}/templates/package.json`:
-   - Set `name` to the package name
-   - Add each rill-ext package from the blueprint Extension Plan to `dependencies`
-   - Add npm packages required by custom extensions
-   - Always include `@rcrsr/rill-cli` and `@rcrsr/rill-agent` in `devDependencies`
-   - If custom TypeScript extensions exist: include `check` (`tsc --noEmit`); add `typescript` and `@types/node` to `devDependencies`. Rill loads `.ts` extensions directly at runtime, so no precompile step is needed.
-   - If no custom extensions: omit `check`. Set `build` to `rill-build . --output build` either way.
-   - Include the `serve` script if HTTP deployment is requested
+2. **Append canonical entries to `.gitignore`** (`rill bootstrap` already added `.rill/`):
+   ```
+   node ${CLAUDE_SKILL_DIR}/scripts/append-gitignore.mjs <package-dir>
+   ```
+   The script appends `.env`, `build/`, `transcript/`, `dist/` only if missing. Idempotent.
 
-3. **Generate `tsconfig.json`** from template (only if custom extensions exist).
+3. **Generate `tsconfig.json`** if custom extensions exist. Copy `${CLAUDE_SKILL_DIR}/templates/tsconfig.json` to `<package-dir>/tsconfig.json`. The two-line template extends `./.rill/tsconfig.rill.json` so module resolution finds extension types in `.rill/npm/node_modules/`. Skip this step when the blueprint declares no custom extensions.
 
-4. **Generate `.env`** from `${CLAUDE_SKILL_DIR}/templates/env.template`, including only the variables referenced in the blueprint Extension Plan.
+4. **Scaffold the HTTP server** (only if the blueprint requests HTTP deployment):
+   ```
+   node ${CLAUDE_SKILL_DIR}/scripts/scaffold-server.mjs <package-dir>
+   ```
+   The script copies `${CLAUDE_SKILL_DIR}/templates/server.js`, writes a root `package.json` with `@rcrsr/rill-agent` in `dependencies` and a `serve` script (`node server.js`), and runs `npm install` from the package root. This root install is separate from the `.rill/npm/` scoped install that `rill bootstrap` produced.
 
-5. **Generate `.gitignore`** from template.
+`.env` is NOT generated here — it is produced by Step 7b after the engineer fills in `${VAR_NAME}` placeholders, so the trim can read actual references rather than guess from the blueprint.
 
-6. **Run `npm install`**. Warn and continue if npm is unavailable.
+### Step 7b: Edit rill-config.json (engineer) and generate .env (skill)
 
-7. **Generate `server.js`** from template (only if HTTP deployment is requested).
+`rill bootstrap` and `rill install` already populated `extensions.mounts` and a starter `extensions.config`. Now finalize the config: set top-level metadata, the `main` handler, secret references, and any remaining config keys.
 
-### Step 7b: rill-config.json (engineer)
+1. **Engineer edits the config.** Use Agent with `subagent_type: "rill:rill-engineer"` and a prompt containing:
+   - The package directory path
+   - The blueprint path: `<package>/.rill-design/blueprint.md`
+   - The current `rill-config.json` content
+   - Instruction: "Read the blueprint and the existing rill-config.json. Set the top-level `name` (the package identifier from the blueprint), `version` (the rill schema version, matching the major.minor of the installed `@rcrsr/rill-cli`, e.g. `\"0.19\"`), and `main` (`script.rill:closure_name` from the Pipeline Blueprint). Replace any literal credentials in `extensions.config` with `${VAR_NAME}` placeholders matching `.env`. Add any config keys called out in the Extension Plan that `rill install` did not populate. Do NOT touch `extensions.mounts` (rill install owns that). If anything is unclear, return a Blueprint gap message instead of guessing."
 
-Use Agent with `subagent_type: "rill:rill-engineer"` and a prompt containing:
-- The package directory path
-- The blueprint path: `<package>/.rill-design/blueprint.md`
-- The rill-config.json template path
-- Instruction: "Read the blueprint, then write `rill-config.json` exactly as specified in the Extension Plan section. Use `${VAR_NAME}` for secrets. Bundled extensions use `@rcrsr/rill/ext/<name>`; vendor extensions use the npm name; custom extensions use `./extensions/<file>.ts` (rill loads `.ts` directly at runtime). The `main` field references `script.rill:closure_name` from the blueprint. If anything is unclear, return a Blueprint gap message instead of guessing."
+2. **Skill generates .env.** Run:
+   ```
+   node ${CLAUDE_SKILL_DIR}/scripts/scaffold-env.mjs <package-dir>
+   ```
+   The script scans the just-edited `rill-config.json` for `${VAR_NAME}` references, reads `${CLAUDE_SKILL_DIR}/templates/env.template` for default lines, and writes `<package-dir>/.env` containing only the referenced variables. Already-populated values in an existing `.env` are preserved.
 
 ### Step 7c: Custom TypeScript Extensions (engineer, if any)
 
-For each custom extension in the blueprint, use Agent with `subagent_type: "rill:rill-engineer"` and a prompt containing:
-- The package directory path
-- The blueprint path
-- The extension name to implement
-- The custom-extension template path
-- Instruction: "Read the Custom Extension API Designs section of the blueprint. Implement the extension as a thin wrapper. The factory signature is `(config, ctx: ExtensionFactoryCtx)`. All configuration comes from the factory `config` parameter, never directly from `process.env`. Surface failures via `runCtx.invalidate(error, { code, provider, raw })` using the generic atom taxonomy (`#AUTH`, `#FORBIDDEN`, `#NOT_FOUND`, `#RATE_LIMIT`, `#QUOTA_EXCEEDED`, `#UNAVAILABLE`, `#CONFLICT`, `#PROTOCOL`, `#INVALID_INPUT`, `#TIMEOUT`, `#DISPOSED`, `#TYPE_MISMATCH`); RILL-R004 was retired in rill 0.19.0. Factory-time configuration validation throws `RuntimeError('RILL-R001', ...)`."
+For each custom extension in the blueprint:
 
-After all custom extensions are written, run `npm run check` to verify TypeScript compilation. If errors, fix them by re-invoking the engineer with the error message.
+1. **Engineer writes the file.** Use Agent with `subagent_type: "rill:rill-engineer"` and a prompt containing:
+   - The package directory path
+   - The blueprint path
+   - The extension name to implement
+   - The custom-extension template path
+   - Instruction: "Read the Custom Extension API Designs section of the blueprint. Implement the extension as a thin wrapper at `extensions/<file>.ts`. The factory signature is `(config, ctx: ExtensionFactoryCtx)`. All configuration comes from the factory `config` parameter, never directly from `process.env`. Surface failures via `runCtx.invalidate(error, { code, provider, raw })` using the generic atom taxonomy (`#AUTH`, `#FORBIDDEN`, `#NOT_FOUND`, `#RATE_LIMIT`, `#QUOTA_EXCEEDED`, `#UNAVAILABLE`, `#CONFLICT`, `#PROTOCOL`, `#INVALID_INPUT`, `#TIMEOUT`, `#DISPOSED`, `#TYPE_MISMATCH`); RILL-R004 was retired in rill 0.19.0. Factory-time configuration validation throws `RuntimeError('RILL-R001', ...)`."
+
+2. **Skill registers the mount.** After the engineer writes `extensions/<file>.ts`, run from the package directory:
+   ```
+   rill install ./extensions/<file>.ts --as <mount-from-blueprint>
+   ```
+   Use the mount name declared in the blueprint Custom Extension API Designs section (`mount: <namespace>` line). If no mount is recorded, halt and route a Blueprint gap to the architect rather than inventing one. This adds the mount to `rill-config.json` without invoking npm.
+
+3. **Type-check.** After all custom extensions are written and installed, run `rill check --types` from the package directory. If errors, fix them by re-invoking the engineer with the error message.
 
 ### Step 7d: Prompt Files (engineer, if LLMs are used)
 
@@ -379,10 +387,10 @@ Use Agent with `subagent_type: "rill:rill-reviewer"` and a prompt containing:
 - The blueprint path
 - The cheatsheet, errors, and anti-patterns fragments from Phase 1 (`llm/cheatsheet.txt`, `llm/errors.txt`, `llm/anti-patterns.txt`)
 - The Extension Surface Inventory from Phase 4.5 (`<package>/.rill-design/extension-surfaces.md`)
-- Instruction: "The rill cheatsheet, errors, anti-patterns, and the Extension Surface Inventory are included below. Do NOT fetch documentation. Validate the implementation against the blueprint and the Inventory. Run rill-check on every .rill file, tsc --noEmit if extensions/ exists, verify every extension call site matches a signature from the Inventory (param order, types, return shape), and grade design conformance. Return the structured review report."
+- Instruction: "The rill cheatsheet, errors, anti-patterns, and the Extension Surface Inventory are included below. Do NOT fetch documentation. Validate the implementation against the blueprint and the Inventory. Run `rill check` on every .rill file, `rill check --types` if extensions/ exists, verify every extension call site matches a signature from the Inventory (param order, types, return shape), and grade design conformance. Return the structured review report."
 
 If the verdict is FAIL, route the violations back to the engineer:
-- For tooling failures (rill-check / tsc), invoke the engineer with the specific error and the affected file
+- For tooling failures (`rill check`, `rill check --types`), invoke the engineer with the specific error and the affected file
 - For design-conformance failures, invoke the engineer with the violation and the blueprint section it violates
 - After fixes, re-invoke the reviewer
 
@@ -394,7 +402,7 @@ If the package has multiple scripts, use Agent with `subagent_type: "rill:rill-e
 
 ### Step 7h: Runtime Smoke Test (engineer fix-loop)
 
-The reviewer in Step 7f only checks static syntax (`rill-check`, `tsc --noEmit`). It cannot detect wrong extension call shapes, wrong prompt filenames, or call-site signature mismatches. Run a single end-to-end execution to surface those defects before delivery.
+The reviewer in Step 7f only checks static syntax (`rill check`, `rill check --types`). It cannot detect wrong extension call shapes, wrong prompt filenames, or call-site signature mismatches. Run a single end-to-end execution to surface those defects before delivery.
 
 1. **Inform the user** that a runtime smoke test is required. State: "The package compiles and passes static review. Before delivery, I will run it once to catch runtime errors that static checks miss. This requires `.env` populated with real credentials."
 
@@ -403,10 +411,10 @@ The reviewer in Step 7f only checks static syntax (`rill-check`, `tsc --noEmit`)
    - If proceeding, continue.
 
 3. **Build the run command** from the blueprint's main closure signature:
-   - No required params: `npm run dev`
-   - Required params: `npm run dev -- --<param_name> <value>` for each, using minimal valid sample values from the blueprint
+   - No required params: `rill run`
+   - Required params: `rill run -- --<param_name> <value>` for each, using minimal valid sample values from the blueprint
 
-4. **Execute** and capture exit code, stdout, and stderr.
+4. **Execute** from the package directory and capture exit code, stdout, and stderr.
 
 5. **Classify the outcome:**
    - Exit 0: `SMOKE TEST: PASS`. Proceed to Phase 8.
@@ -443,11 +451,11 @@ After implementation passes review and the smoke test passes (or is skipped with
 
 4. Note any assumptions made during implementation
 5. Suggest next steps (testing, deployment, extensions)
-6. Show the run command. `rill-run` runs in **handler mode** when `main` names a closure (`script.rill:closure_name`) and binds CLI flags to the closure's parameters by name:
-   - Closure with no required params (or all defaulted): `npm run dev`
-   - Closure with required params: `npm run dev -- --<param_name> <value>` for each param. Flag names match the closure parameter names verbatim (underscores stay underscores). Bool params accept `--<param_name>` as a true switch.
-   - Document every closure param under the run command in the delivery report (e.g., `npm run dev -- --max_scan 50` for `|max_scan: number|`).
-7. If HTTP deployment is configured: `npm run build && npm run serve`
+6. Show the run command. `rill run` runs in **handler mode** when `main` names a closure (`script.rill:closure_name`) and binds CLI flags to the closure's parameters by name:
+   - Closure with no required params (or all defaulted): `rill run`
+   - Closure with required params: `rill run -- --<param_name> <value>` for each param. Flag names match the closure parameter names verbatim (underscores stay underscores). Bool params accept `--<param_name>` as a true switch.
+   - Document every closure param under the run command in the delivery report (e.g., `rill run -- --max_scan 50` for `|max_scan: number|`).
+7. If HTTP deployment is configured: `rill build --output build && node server.js`
 8. **Direct the user to fill in `.env`** if it has not been populated yet (e.g., the smoke test was skipped). State explicitly: "Open `.env` and populate every variable with real values. The package will fail at runtime if any required credential is missing."
 9. **Note the smoke test outcome**:
    - If `SMOKE TEST: PASS`, state that the package executed successfully end-to-end during build.

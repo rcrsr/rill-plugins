@@ -2,42 +2,51 @@
 
 ```
 package-name/
-  package.json                 # Dependencies, dev/build/serve targets
-  rill-config.json             # Extension mounts and configuration
+  rill-config.json             # Mounts and config (created by `rill bootstrap`, mutated by `rill install`)
   main.rill                    # Entry point script
-  server.js                    # HTTP agent server (optional, for deployment)
-  scripts/                     # Additional rill scripts (if multiple)
+  .env                         # Secrets, referenced as ${VAR_NAME} in rill-config.json
+  .gitignore                   # `rill bootstrap` appends `.rill/`; the skill adds `.env`, `build/`, `transcript/`
+  .rill/                       # Created by `rill bootstrap` (gitignored)
+    npm/                       # Scoped install root for extensions (replaces project node_modules)
+    tsconfig.rill.json         # Path mappings into .rill/npm/node_modules; extended by user tsconfig.json
+  scripts/                     # Additional rill scripts (multi-script packages)
     step-one.rill
-    step-two.rill
-  prompts/                     # LLM prompts as .prompt.md files (required when LLMs are used)
+  prompts/                     # LLM prompts (required when LLMs are used)
     summarize.prompt.md
     agents/research.prompt.md
-  extensions/                  # Custom TypeScript extensions (if any)
+  extensions/                  # Custom TypeScript extensions (optional)
     ext-name.ts
-  .env                         # Environment variables (secrets, API keys)
+  tsconfig.json                # `extends: "./.rill/tsconfig.rill.json"` (only if custom extensions exist)
+  server.js                    # HTTP agent server (optional, for deployment)
+  package.json                 # Optional: only when HTTP serve or other npm-driven workflow is needed
 ```
 
-## File purposes
+## File ownership
 
-| File | Purpose |
-|------|---------|
-| `package.json` | Declares dependencies and npm script targets: `dev`, `build`, `serve`. |
-| `rill-config.json` | Declares extension mounts (namespace -> package), per-namespace config, and package metadata (`name`, `version`). |
-| `main.rill` | Entry point. Single-script packages put all logic here. Multi-script packages use this as orchestrator. |
-| `scripts/*.rill` | Separate scripts for distinct pipeline stages. Loaded via `use<module:name>`. |
-| `prompts/**/*.prompt.md` | LLM prompts with YAML frontmatter. Loaded by `@rcrsr/rill-ext-prompt-md`. Required whenever any LLM extension is mounted. |
-| `extensions/*.ts` | Custom TypeScript extensions for capabilities not covered by built-in rill-ext packages. |
-| `server.js` | HTTP server using `@rcrsr/rill-agent`. Loads the build and serves the agent over HTTP. Optional. |
-| `.env` | API keys and secrets. Referenced in rill-config.json as `${VAR_NAME}`. Never committed. |
+| File | Created by | Notes |
+|------|------------|-------|
+| `rill-config.json` | `rill bootstrap` (starter), then `rill install <pkg>` populates `extensions.mounts` and `extensions.config`. The skill adds `name`, `version`, `main`, and `${VAR_NAME}` placeholders for credentials. |
+| `.rill/npm/` | `rill bootstrap` writes a scoped `package.json` here. `rill install` populates `node_modules/`. Never commit. |
+| `.rill/tsconfig.rill.json` | `rill bootstrap` writes path mappings into `.rill/npm/node_modules/`. User `tsconfig.json` extends it. |
+| `.gitignore` | `rill bootstrap` appends `.rill/`. The skill appends `.env`, `build/`, `transcript/`, `dist/`. |
+| `main.rill` / `scripts/*.rill` | The engineer agent writes these from the architect's pipeline blueprint. |
+| `prompts/**/*.prompt.md` | The engineer agent writes these from the prompt inventory. Required whenever any LLM extension is mounted. |
+| `extensions/*.ts` | The engineer agent writes the file, then the skill runs `rill install ./extensions/<file>.ts --as <mount>` to register it. |
+| `tsconfig.json` | The skill writes only when custom extensions exist. Body: `{ "extends": "./.rill/tsconfig.rill.json", "include": ["extensions/**/*.ts"] }`. |
+| `server.js` | Optional. Skill copies the template only if HTTP deployment was requested. |
+| `package.json` | Optional. Skill writes a minimal one only if `server.js` exists (needs `@rcrsr/rill-agent` in root `node_modules/`) or the user asked for npm scripts as conveniences. |
+| `.env` | The skill copies `env.template` and trims it to the variables referenced in the blueprint Extension Plan. |
 
-## npm script targets
+## Run, build, type-check
 
-| Target | Command | Purpose |
-|--------|---------|---------|
-| `dev` | `rill-run .` | Run the package in development mode. Replaces `run.sh`. |
-| `check` | `tsc --noEmit` | Type-check extensions without emitting. Only if extensions exist. Used for CI validation; rill loads `.ts` files directly at runtime. |
-| `build` | `rill-build . --output build` | Bundle the package for deployment. |
-| `serve` | `node server.js` | Start the HTTP agent server from the bundled output. Requires `server.js`. |
+| Action | Command | Notes |
+|--------|---------|-------|
+| Run | `rill run` | Reads `rill-config.json`, executes the `main` handler. |
+| Run with handler params | `rill run -- --param_name value` | Flag names match closure parameter names verbatim. |
+| Build | `rill build --output build` | Default nests under `build/<package-name>/`. Pass `--flat` to write directly into `--output`. |
+| Lint | `rill check <file>` | Default fails only on `error` severity. Pass `--min-severity info` for strict mode. |
+| Type-check | `rill check --types` | Resolves `tsc` from `node_modules/.bin/` then `.rill/npm/node_modules/.bin/`. |
+| Serve | `node server.js` | Requires root `package.json` with `@rcrsr/rill-agent` and a build under `build/`. |
 
 ## Conventions
 

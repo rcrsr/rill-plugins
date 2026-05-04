@@ -26,6 +26,40 @@ Every invocation includes a path to the blueprint at `<package>/.rill-design/blu
 3. Implement exactly what is specified — closure names, parameter names and types, operator choices, extension calls, and return shapes.
 4. If the blueprint is incomplete or contradictory for your task, STOP and reply to the orchestrator with a "Blueprint gap" message describing what is missing. Do not improvise. The orchestrator will route the gap back to the architect.
 
+## Tooling
+
+The unified `rill` CLI (rill-cli >= 0.19.4) handles all build/run/check operations. Subcommands you may use:
+
+- `rill check <file>` — lint a script (default fails only on `error` severity)
+- `rill check --types` — type-check `extensions/*.ts` against the project tsconfig
+- `rill run` / `rill run -- --param value` — execute the configured handler
+- `rill describe project --stubs --mount <name>` — print a mount's call surface
+- `rill install ./extensions/<file>.ts --as <mount>` — register a single-file custom extension (the orchestrator runs this after you write the file)
+
+Extensions resolve from `<projectDir>/.rill/npm/node_modules/`, not the project root. `rill bootstrap` writes `.rill/tsconfig.rill.json` with path mappings; the project `tsconfig.json` extends it so `tsc` and editors see extension types.
+
+### Custom extension integration patterns
+
+When the blueprint Custom Extension API Designs section names an `integration option`, follow the matching pattern:
+
+- **Option 1 / 2 (official or community SDK):** import the SDK at the top of `extensions/<file>.ts`. The factory builds the SDK client from `config` (never from `process.env`). Each callable is a one-line passthrough that returns the SDK's response shape verbatim. Do NOT add retry, batching, or transformation logic — those belong in rill scripts.
+
+- **Option 3 (REST or GraphQL via fetch):** the factory builds an authed client object once (auth header, base URL, default `AbortSignal.timeout(ms)`). Each callable issues one HTTP call with typed input and output. Map HTTP error classes to `runCtx.invalidate` atoms:
+
+  | Status | Atom |
+  |--------|------|
+  | 401 | `#AUTH` |
+  | 403 | `#FORBIDDEN` |
+  | 404 | `#NOT_FOUND` |
+  | 408, 504 | `#TIMEOUT` |
+  | 429 | `#RATE_LIMIT` |
+  | 5xx | `#UNAVAILABLE` |
+  | other 4xx | `#INVALID_INPUT` |
+
+  Do not retry inside the extension — rill's `retry` operator owns that policy. Surface the response body in the `raw` field so callers can diagnose.
+
+- **Option 4 (MCP server bridge):** only proceed if the orchestrator has confirmed user approval. The factory connects to the MCP transport configured by `config` (URL, transport type). Each callable proxies one MCP tool call. Surface MCP errors via `runCtx.invalidate` with `#PROTOCOL` for transport failures and the appropriate atom for tool-reported errors.
+
 ## First Step: Consult Documentation
 
 If the orchestrator's prompt does not include the rill language reference, fetch it with `curl -sL` (Bash, not WebFetch — WebFetch summarizes and loses syntax detail).
@@ -167,7 +201,7 @@ dict[b: "b"] -> dict(b: string, a: string = "a")   # dict[a: "a", b: "b"]
 
 Entry-point closures MUST be fully annotated: a description on the closure and a description on every parameter.
 
-**Entry-point closure parameters bind from `rill-run` CLI flags.** When `rill-config.json` declares `main: "script.rill:closure_name"`, `rill-run` enters handler mode and parses each closure parameter as a `--<param_name> <value>` flag (booleans accept `--<param_name>` as a true switch). Flag names match parameter names verbatim — keep them snake_case for both rill style and CLI ergonomics. Required params with no default cause `rill-run` to fail when the corresponding flag is omitted; provide defaults (`|n: number = 50|`) only when a sensible default exists, otherwise leave the param required so callers must specify it.
+**Entry-point closure parameters bind from `rill run` CLI flags.** When `rill-config.json` declares `main: "script.rill:closure_name"`, `rill run` enters handler mode and parses each closure parameter as a `--<param_name> <value>` flag (booleans accept `--<param_name>` as a true switch). Flag names match parameter names verbatim — keep them snake_case for both rill style and CLI ergonomics. Required params with no default cause `rill run` to fail when the corresponding flag is omitted; provide defaults (`|n: number = 50|`) only when a sensible default exists, otherwise leave the param required so callers must specify it.
 
 ## Pipe Scoping: Eager vs Deferred
 

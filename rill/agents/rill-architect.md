@@ -47,7 +47,7 @@ The skill typically pre-fetches and includes the right fragments. Only fetch if 
 
 ## Authoritative call surfaces
 
-For Phase 5 (data flow) and beyond, the orchestrator includes an Extension Surface Inventory captured by `rill-describe project` against the chosen rill-ext packages. The Inventory lists every callable's parameter names, parameter types, return type, and (where present) annotations.
+For Phase 5 (data flow) and beyond, the orchestrator includes an Extension Surface Inventory captured by `rill describe project --stubs` against the chosen rill-ext packages. The Inventory lists every callable's parameter names, parameter types, return type, and (where present) annotations.
 
 The Inventory is the authoritative call surface. Treat it as ground truth over the extension index, README files, prior knowledge, or any text-only documentation. When the Inventory and another source disagree, the Inventory wins. If a callable you need is missing from the Inventory or its signature surprises you, return a Blueprint gap rather than designing against a guessed shape.
 
@@ -204,9 +204,21 @@ The `rill-config.json` `main` field references the closure name: `"main": "main.
 | Index items during iteration | `enumerate -> seq/fan({ ... })` | Access via `$.index`, `$.value` |
 | Loop with state until a condition | `init -> while (cond) do { ... }` | Pre-loop with `$` as accumulator |
 
+## When the index has no match: capability gap resolution
+
+When a required capability has no coverage in `@rcrsr/rill/ext/*` or any published `@rcrsr/rill-ext-*` package, choose the integration in this order. Stop at the first option that fits. Record the chosen option and the rationale for skipping higher options in the blueprint Custom Extension API Designs section.
+
+1. **Thin custom extension wrapping the vendor's official npm SDK.** Default. Add the SDK to `dependencies`. The factory constructs the SDK client; each callable is a one-line passthrough that exposes only what the blueprint needs. No business logic, no retry orchestration beyond what the SDK already does, no transformation beyond what the rill scripts require.
+
+2. **Thin custom extension wrapping a maintained community SDK.** Use only when the vendor publishes no official SDK. Verify maintenance: commit within 12 months, ≥1k weekly downloads, TypeScript types shipped. Same wrapper shape as option 1.
+
+3. **Thin custom extension calling the vendor REST or GraphQL API directly via `fetch`.** Use when no SDK exists or the SDK is too heavy for the few endpoints needed. The factory builds an authed client (auth header, base URL, default timeout). Each callable is one HTTP call with typed input and output. Surface failures via `runCtx.invalidate(error, { code, provider, raw })` with the right atom (`#AUTH`, `#RATE_LIMIT`, `#NOT_FOUND`, `#UNAVAILABLE`, etc.).
+
+4. **MCP server bridge.** Last resort. Allowed only when ALL of the following hold: (a) the vendor publishes no SDK, (b) the API is too complex to wrap directly (tens of endpoints, multi-step OAuth, streaming or binary protocols), (c) a maintained MCP server already exposes the surface the blueprint needs, (d) the user explicitly approves the dependency. Drawbacks: extra runtime process, transport overhead, dependency on the MCP server's deployment lifecycle, and the rill package becomes non-portable outside an MCP-aware host. The architect MUST emit a Blueprint gap requesting user approval before specifying option 4.
+
 ## When to create a custom extension
 
-Only create a custom extension when one of these applies:
+Even after picking one of options 1-3 above, only create a custom extension when one of these applies:
 
 1. **External data access.** The package needs to fetch from or push to a service with no built-in rill-ext coverage (RSS feeds, vendor APIs, proprietary protocols).
 2. **Vendor SDK integration.** A third-party npm package provides the best way to interact with a service. The extension wraps the SDK, not reimplements it.
@@ -265,7 +277,9 @@ generated: <ISO-8601 timestamp from `date -u +%Y-%m-%dT%H:%M:%SZ`>
 ## Custom
 - mount: <namespace>
   source: ./extensions/<file>.ts
+  integration option: <1: official SDK | 2: community SDK | 3: REST via fetch | 4: MCP bridge>
   npm wrapped: <package or "none">
+  rationale: <one sentence on why higher options were skipped>
   purpose: <one sentence>
   exposed functions: <list of signatures>
 
