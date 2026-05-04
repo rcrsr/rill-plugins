@@ -1,31 +1,23 @@
-# Rill Plugins
+# rill-make
 
-Claude Code plugins for the [rill](https://github.com/rcrsr/rill) scripting language and its extension ecosystem.
+Claude Code plugin for authoring [rill](https://github.com/rcrsr/rill) packages.
+
+This repository is the plugin source. It is distributed through the [`rcrsr/claude-plugins`](https://github.com/rcrsr/claude-plugins) marketplace.
 
 ## Installation
 
-```bash
-# Add the marketplace
-/plugin marketplace add rcrsr/rill-plugins
-
-# Install the plugin
-/plugin install rill@rill-plugins
+```
+/plugin marketplace add rcrsr/claude-plugins
+/plugin install rill-make@claude-plugins
+/reload-plugins
 ```
 
-## Available Plugins
+## What it ships
 
-### [rill](./rill)
+- **`/rill-make:create-rill-package`** — Skill that walks a specification through an 8-phase workflow: doc fetch, requirements gathering, clarifying questions, extension identification, data-flow design, custom-extension design, implementation, and validation. Produces a complete rill package with `rill-config.json`, scripts, and optional TypeScript extensions.
+- **`rill-architect`**, **`rill-engineer`**, **`rill-reviewer`** — Subagents that own design, implementation, and validation respectively. Invoked by the skill against a frozen blueprint at `<package>/.rill-design/blueprint.md`.
 
-**Author and debug rill packages.**
-
-Ships two components:
-
-- **`/rill:create-rill-package`** — Skill that walks a specification through an 8-phase workflow: doc fetch, requirements gathering, clarifying questions, extension identification, data-flow design, custom-extension design, implementation, and validation. Produces a complete rill package with `rill-config.json`, scripts, and optional TypeScript extensions.
-- **`rill-engineer`** — Subagent that writes, reviews, and debugs rill scripts and `rill-ext` configurations. Always consults upstream docs before generating code to stay current with the language.
-
-```bash
-/plugin install rill@rill-plugins
-```
+See [`GUIDE.md`](./GUIDE.md) for end-to-end usage and [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the agent split and blueprint schema.
 
 ## License
 
@@ -34,4 +26,3 @@ Ships two components:
 ## User Responsibility
 
 The `create-rill-package` skill references external vendor credentials via `${VAR_NAME}` placeholders and produces a provisioning checklist. It does not create vendor accounts, fetch API keys, or provision remote resources (buckets, vector collections, webhook endpoints). The user owns all accounts, credentials, quotas, and billing.
-

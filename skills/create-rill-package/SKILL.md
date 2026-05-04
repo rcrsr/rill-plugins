@@ -7,11 +7,11 @@ argument-hint: "[spec-file-or-description]"
 
 # Create Rill Package
 
-You orchestrate creation of a complete rill package. Your job is sequencing — design decisions belong to the `rill:rill-architect` agent, implementation to `rill:rill-engineer`, and validation to `rill:rill-reviewer`. Follow the phases in order. Do NOT skip phases or combine them.
+You orchestrate creation of a complete rill package. Your job is sequencing — design decisions belong to the `rill-make:rill-architect` agent, implementation to `rill-make:rill-engineer`, and validation to `rill-make:rill-reviewer`. Follow the phases in order. Do NOT skip phases or combine them.
 
 This skill targets `@rcrsr/rill-cli >= 0.19.5`. The unified `rill` binary handles bootstrapping, extension installation, type-checking, building, and execution. The skill drives that CLI rather than crafting `package.json` and `rill-config.json` from scratch.
 
-See `rill/ARCHITECTURE.md` for the agent split, blueprint schema, and revision history.
+See `ARCHITECTURE.md` at the plugin root for the agent split, blueprint schema, and revision history.
 
 ## User Responsibility for External Vendors
 
@@ -24,7 +24,7 @@ This skill includes templates and examples. Use them as structural guides for ou
 **Templates** (in `${CLAUDE_SKILL_DIR}/templates/`):
 - `PROJECT-STRUCTURE.md` — directory layout, file ownership, run/build commands
 - `tsconfig.json` — minimal tsconfig that extends `.rill/tsconfig.rill.json` (only used when custom extensions exist)
-- `custom-extension.ts` — TypeScript extension scaffold with factory, config validation, error handling
+- `custom-extension.ts.tmpl` — TypeScript extension scaffold with factory, config validation, error handling. Suffixed `.tmpl` so editors do not treat it as a TS source file; engineer drops the `.tmpl` suffix when copying into a generated package's `extensions/` directory.
 - `env.template` — default lines (`# VAR=hint`) consulted by `scaffold-env.mjs` when generating a trimmed `.env`
 - `server.js` — HTTP agent server using `@rcrsr/rill-agent` (copied by `scaffold-server.mjs` when HTTP deployment is requested)
 
@@ -204,9 +204,9 @@ The architect designs against upstream docs alone unless given concrete examples
 
 ## Phase 4: Identify Capabilities and Extensions (architect)
 
-Delegate to the `rill:rill-architect` agent.
+Delegate to the `rill-make:rill-architect` agent.
 
-Use Agent with `subagent_type: "rill:rill-architect"` and a prompt containing:
+Use Agent with `subagent_type: "rill-make:rill-architect"` and a prompt containing:
 - The full requirements summary from Phase 2
 - The user's answers from Phase 3
 - The Sibling References inventory and full file contents collected in Phase 3.5
@@ -257,7 +257,7 @@ The install in this phase is the real install — it carries through to Phase 7.
 
    If any `rill install` call exits non-zero, the failure is at the npm layer (404, network, registry auth, name typo). Surface the failed package name and stderr to the user. Use `AskUserQuestion` to ask: (a) drop the extension and revisit Phase 4 with the architect, (b) abort. Do not silently continue with a missing mount.
 
-4. **Write stub configs from the Extension Plan.** Install populated `extensions.mounts` but left `extensions.config` empty. Probe (next step) constructs each extension's factory and most factories need at least an auth/credential dict to exist. Use Agent with `subagent_type: "rill:rill-engineer"` and a prompt containing:
+4. **Write stub configs from the Extension Plan.** Install populated `extensions.mounts` but left `extensions.config` empty. Probe (next step) constructs each extension's factory and most factories need at least an auth/credential dict to exist. Use Agent with `subagent_type: "rill-make:rill-engineer"` and a prompt containing:
    - The package directory path
    - The blueprint path: `<package>/.rill-design/blueprint.md`
    - The current `rill-config.json` content
@@ -275,9 +275,9 @@ The install in this phase is the real install — it carries through to Phase 7.
 
 ## Phase 5: Design Data Flow (architect)
 
-Delegate to the `rill:rill-architect` agent again.
+Delegate to the `rill-make:rill-architect` agent again.
 
-Use Agent with `subagent_type: "rill:rill-architect"` and a prompt containing:
+Use Agent with `subagent_type: "rill-make:rill-architect"` and a prompt containing:
 - The package directory path
 - The cheatsheet, control-flow, and callables fragments from Phase 1 (`llm/cheatsheet.txt`, `llm/control-flow.txt`, `llm/callables.txt`)
 - The Extension Surface Inventory from Phase 4.5 (`<package>/.rill-design/extension-surfaces.md`)
@@ -288,11 +288,11 @@ Read the updated blueprint. Present the Pipeline Blueprint and Prompt Inventory 
 
 ## Phase 6: Design Custom Extensions (architect)
 
-If Phase 4 identified custom extensions, delegate to the `rill:rill-architect` agent.
+If Phase 4 identified custom extensions, delegate to the `rill-make:rill-architect` agent.
 
-Use Agent with `subagent_type: "rill:rill-architect"` and a prompt containing:
+Use Agent with `subagent_type: "rill-make:rill-architect"` and a prompt containing:
 - The package directory path
-- The custom extension template at `${CLAUDE_SKILL_DIR}/templates/custom-extension.ts`
+- The custom extension template at `${CLAUDE_SKILL_DIR}/templates/custom-extension.ts.tmpl` (read it as a `.ts` scaffold; the `.tmpl` suffix is purely to keep editors from picking it up as a real TS source file)
 - The npm package(s) to wrap (confirmed in Phase 4)
 - Instruction: "Extend the blueprint at `<package>/.rill-design/blueprint.md` with the Custom Extension API Designs section. Each design specifies the TypeScript interface, function signatures, parameter and return types, config schema, and error codes. Keep extensions thin wrappers — business logic stays in rill scripts. Reply with a short summary."
 
@@ -302,7 +302,7 @@ If no custom extensions are needed, skip to Phase 7.
 
 ## Phase 7: Implement (engineer)
 
-ALL rill code, JSON config edits, prompt files, and TypeScript extensions go through the `rill:rill-engineer` agent. Each step references the frozen blueprint as the source of truth. The engineer does not redesign — if the blueprint is incomplete, the engineer will return a "Blueprint gap" message; route the gap back to Phase 5 or 6 with the architect.
+ALL rill code, JSON config edits, prompt files, and TypeScript extensions go through the `rill-make:rill-engineer` agent. Each step references the frozen blueprint as the source of truth. The engineer does not redesign — if the blueprint is incomplete, the engineer will return a "Blueprint gap" message; route the gap back to Phase 5 or 6 with the architect.
 
 ### Step 7a: Scaffold Project Environment (skill)
 
@@ -322,7 +322,7 @@ The package was bootstrapped and rill-ext packages were installed in Phase 4.5. 
    ```
    The script appends `.env`, `build/`, `transcript/`, `dist/` only if missing. Idempotent.
 
-3. **Generate `tsconfig.json`** if custom extensions exist. Copy `${CLAUDE_SKILL_DIR}/templates/tsconfig.json` to `<package-dir>/tsconfig.json`. The two-line template extends `./.rill/tsconfig.rill.json` so module resolution finds extension types in `.rill/npm/node_modules/`. Skip this step when the blueprint declares no custom extensions.
+3. **Generate `tsconfig.json`** if custom extensions exist. Copy `${CLAUDE_SKILL_DIR}/templates/tsconfig.json.tmpl` to `<package-dir>/tsconfig.json` (the template is suffixed `.tmpl` in the plugin source so editors do not pick it up as a real TS project; the destination drops the suffix). The template extends `./.rill/tsconfig.rill.json` so module resolution finds extension types in `.rill/npm/node_modules/`. Skip this step when the blueprint declares no custom extensions.
 
 4. **Scaffold the HTTP server** (only if the blueprint requests HTTP deployment):
    ```
@@ -336,7 +336,7 @@ The package was bootstrapped and rill-ext packages were installed in Phase 4.5. 
 
 `rill install` populated `extensions.mounts`. Phase 4.5 Step 4 wrote stub `extensions.config` blocks using `${env.VAR}` placeholders so probe could enumerate surfaces. Now finalize the config: set top-level metadata, the `main` handler, switch placeholders to the runtime form, and add any keys the architect added in Phase 5/6.
 
-1. **Engineer edits the config.** Use Agent with `subagent_type: "rill:rill-engineer"` and a prompt containing:
+1. **Engineer edits the config.** Use Agent with `subagent_type: "rill-make:rill-engineer"` and a prompt containing:
    - The package directory path
    - The blueprint path: `<package>/.rill-design/blueprint.md`
    - The current `rill-config.json` content
@@ -352,7 +352,7 @@ The package was bootstrapped and rill-ext packages were installed in Phase 4.5. 
 
 For each custom extension in the blueprint:
 
-1. **Engineer writes the file.** Use Agent with `subagent_type: "rill:rill-engineer"` and a prompt containing:
+1. **Engineer writes the file.** Use Agent with `subagent_type: "rill-make:rill-engineer"` and a prompt containing:
    - The package directory path
    - The blueprint path
    - The extension name to implement
@@ -375,7 +375,7 @@ For each custom extension in the blueprint:
 
 ### Step 7d: Prompt Files (engineer, if LLMs are used)
 
-For each prompt in the blueprint Prompt Inventory, use Agent with `subagent_type: "rill:rill-engineer"` and a prompt containing:
+For each prompt in the blueprint Prompt Inventory, use Agent with `subagent_type: "rill-make:rill-engineer"` and a prompt containing:
 - The package directory path
 - The blueprint path
 - The prompt entry (path, description, params, output mode, called-by)
@@ -383,7 +383,7 @@ For each prompt in the blueprint Prompt Inventory, use Agent with `subagent_type
 
 ### Step 7e: Rill Scripts (engineer)
 
-For each script in the blueprint Pipeline Blueprint, use Agent with `subagent_type: "rill:rill-engineer"` and a prompt containing:
+For each script in the blueprint Pipeline Blueprint, use Agent with `subagent_type: "rill-make:rill-engineer"` and a prompt containing:
 - The package directory path
 - The blueprint path
 - The specific PIPELINE section the engineer should implement
@@ -392,11 +392,11 @@ For each script in the blueprint Pipeline Blueprint, use Agent with `subagent_ty
 - The full rill language bundle (`ref-llms-full.txt`) content from Phase 1
 - Instruction: "The full rill language bundle and the Extension Surface Inventory are included below. Do NOT fetch documentation. Read the blueprint and implement the specified PIPELINE exactly. Closure name, parameter names and types, return type, operator choices, and extension calls must match the blueprint. Every extension call site must match a signature from the Inventory — if the blueprint contradicts the Inventory, return a Blueprint gap message instead of guessing. Use `log` only for operational messages."
 
-For projects with multiple scripts, you MAY launch multiple `rill:rill-engineer` agents in parallel for independent scripts. Scripts that depend on each other must be implemented sequentially.
+For projects with multiple scripts, you MAY launch multiple `rill-make:rill-engineer` agents in parallel for independent scripts. Scripts that depend on each other must be implemented sequentially.
 
 ### Step 7f: Validate (reviewer)
 
-Use Agent with `subagent_type: "rill:rill-reviewer"` and a prompt containing:
+Use Agent with `subagent_type: "rill-make:rill-reviewer"` and a prompt containing:
 - The package directory path (absolute)
 - The blueprint path
 - The cheatsheet, errors, and anti-patterns fragments from Phase 1 (`llm/cheatsheet.txt`, `llm/errors.txt`, `llm/anti-patterns.txt`)
@@ -412,7 +412,7 @@ Repeat until the reviewer returns PASS, or after 3 unsuccessful loops, halt and 
 
 ### Step 7g: Entry Point (engineer, multi-script only)
 
-If the package has multiple scripts, use Agent with `subagent_type: "rill:rill-engineer"` to create the dispatcher in `main.rill`. Reference the blueprint's Pipeline Blueprint sections for the available scripts.
+If the package has multiple scripts, use Agent with `subagent_type: "rill-make:rill-engineer"` to create the dispatcher in `main.rill`. Reference the blueprint's Pipeline Blueprint sections for the available scripts.
 
 ### Step 7h: Runtime Smoke Test (engineer fix-loop)
 
@@ -435,7 +435,7 @@ The reviewer in Step 7f only checks static syntax (`rill check`, `rill check --t
    - Exit non-zero with credential or quota error (HTTP 401/403, `invalid_grant`, `missing API key`, rate-limit messages): treat as environmental, not an implementation defect. Surface the stderr to the user, ask whether to retry after credential fix or proceed to delivery, and do not loop on the engineer.
    - Exit non-zero with any other error (runtime halt, extension call shape mismatch, missing prompt callable, type assertion failure): treat as an implementation defect; route to the engineer fix-loop.
 
-6. **Engineer fix-loop for implementation defects.** Use Agent with `subagent_type: "rill:rill-engineer"` and a prompt containing:
+6. **Engineer fix-loop for implementation defects.** Use Agent with `subagent_type: "rill-make:rill-engineer"` and a prompt containing:
    - The package directory path
    - The blueprint path
    - The full stderr text from the failed run

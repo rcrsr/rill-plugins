@@ -1,6 +1,6 @@
-# Creating a Rill Package with the `rill` Plugin
+# Creating a Rill Package with the `rill-make` Plugin
 
-This guide walks you from zero to a working rill package using the `/rill:create-rill-package` skill. Follow the phases in order.
+This guide walks you from zero to a working rill package using the `/rill-make:create-rill-package` skill. Follow the phases in order.
 
 ## What Is a Rill Package?
 
@@ -10,8 +10,8 @@ The same package runs in three contexts without code changes:
 
 | Context | Command | What it uses |
 |---------|---------|--------------|
-| Local development | `npm run dev` (`rill-run .`) | Reads the package directory directly |
-| HTTP agent server | `npm run build && npm run serve` | `rill-build` emits a self-contained bundle to `build/`, then `@rcrsr/rill-agent-http` serves it over HTTP (`POST /agents/:name/run`) |
+| Local development | `npm run dev` (`rill run .`) | Reads the package directory directly |
+| HTTP agent server | `npm run build && npm run serve` | `rill build` emits a self-contained bundle to `build/`, then `@rcrsr/rill-agent-http` serves it over HTTP (`POST /agents/:name/run`) |
 | Azure AI Foundry | Deploy the `build/` output with `@rcrsr/rill-agent-foundry` | Same bundle, wrapped in the Foundry Responses API harness |
 
 ### Relationship to `rill-agent`
@@ -21,7 +21,7 @@ The same package runs in three contexts without code changes:
 This separation matters because:
 
 - **Portability**: the same package runs locally, on any HTTP host, or in Azure Foundry. No code branches per environment.
-- **Testability**: `rill-run` exercises the full agent without standing up a server.
+- **Testability**: `rill run` exercises the full agent without standing up a server.
 - **Isolation**: credentials stay in `.env`, never in scripts. Static configuration stays in `rill-config.json`, never hard-coded.
 - **Composition**: one agent can call another via `@rcrsr/rill-agent-ext-ahi`, which registers `ahi::<agentName>` functions in the rill runtime. Co-located agents skip HTTP; remote agents resolve through static URLs.
 
@@ -39,18 +39,18 @@ The rill runtime targets Linux. On Windows, use WSL2.
 - Verify: `uname -a` should print a Linux kernel string (on WSL it contains `Microsoft` or `WSL`).
 - macOS works unofficially but is unsupported.
 
-### 1.2 Node.js 20 or newer
+### 1.2 Node.js 22 LTS or newer
 
-The rill runtime and CLI require Node 20+.
+The rill runtime and CLI require Node `>= 22.16.0`. Use the latest Node 22 LTS (or newer current release) for forward compatibility.
 
 - Install with nvm (recommended):
   ```bash
   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
   exec $SHELL
-  nvm install 20
-  nvm use 20
+  nvm install --lts
+  nvm use --lts
   ```
-- Verify: `node --version` prints `v20.x.x` or higher, and `npm --version` prints a version string.
+- Verify: `node --version` prints `v22.16.0` or higher, and `npm --version` prints a version string.
 
 ### 1.3 Claude Code
 
@@ -61,7 +61,7 @@ You need the Claude Code CLI to install the plugin and run the skill.
 
 ### 1.4 Global `@rcrsr/rill-cli`
 
-The CLI provides five binaries: `rill-run`, `rill-check`, `rill-build`, `rill-exec`, and `rill-eval`. The skill uses `rill-run` to execute packages and `rill-check` to validate scripts during Phase 7e. The package requires Node `>=20.0.0` (enforced via `engines`).
+The CLI ships a unified `rill` binary with subcommands (`rill bootstrap`, `rill install`, `rill check`, `rill describe`, `rill build`, `rill run`, `rill eval`, `rill exec`). The skill drives this CLI through every phase. The package requires Node `>= 22.16.0` (enforced via `engines`).
 
 ```bash
 npm install -g @rcrsr/rill-cli
@@ -70,19 +70,20 @@ npm install -g @rcrsr/rill-cli
 Verify:
 
 ```bash
-which rill-run rill-check rill-build
+which rill
+rill --version
 npm ls -g @rcrsr/rill-cli
 ```
 
-All three binaries must resolve on PATH.
+The `rill` binary must resolve on PATH and report version `>= 0.19.5`.
 
 ## 2. Install the Claude Code Plugin
 
 From any directory, inside a Claude Code session:
 
 ```
-/plugin marketplace add rcrsr/rill-plugins
-/plugin install rill@rill-plugins
+/plugin marketplace add rcrsr/claude-plugins
+/plugin install rill-make@claude-plugins
 /reload-plugins
 ```
 
@@ -94,7 +95,7 @@ Confirm the plugin is active by opening the plugin manager:
 /plugin
 ```
 
-Go to the **Installed** tab. You should see `rill` in the list. The skill registers as `/rill:create-rill-package` and the subagent as `rill-engineer`.
+Go to the **Installed** tab. You should see `rill-make` in the list. The skill registers as `/rill-make:create-rill-package` and the subagents are `rill-architect`, `rill-engineer`, and `rill-reviewer`.
 
 ## 3. Run the Skill
 
@@ -109,15 +110,15 @@ Inside the session, invoke the skill with one of:
 
 - **Inline description**:
   ```
-  /rill:create-rill-package Summarize the top 5 AI news items each morning from a list of RSS feeds and post the summary to a file.
+  /rill-make:create-rill-package Summarize the top 5 AI news items each morning from a list of RSS feeds and post the summary to a file.
   ```
 - **Specification file**:
   ```
-  /rill:create-rill-package ./spec.md
+  /rill-make:create-rill-package ./spec.md
   ```
 - **No argument** (the skill will ask):
   ```
-  /rill:create-rill-package
+  /rill-make:create-rill-package
   ```
 
 ### What the Skill Does
@@ -164,10 +165,10 @@ npm run build && npm run serve
 
 ## Troubleshooting
 
-- **"rill-run: command not found"**: `@rcrsr/rill-cli` is not globally installed. Run `npm install -g @rcrsr/rill-cli`.
-- **Scripts fail `rill-check`**: the skill retries automatically by re-invoking `rill-engineer` with the error. If it still fails, share the error with the skill and it will iterate.
+- **"rill: command not found"**: `@rcrsr/rill-cli` is not globally installed. Run `npm install -g @rcrsr/rill-cli`.
+- **Scripts fail `rill check`**: the skill retries automatically by re-invoking `rill-engineer` with the error. If it still fails, share the error with the skill and it will iterate.
 - **"Missing credential" at runtime**: open `.env` and populate the flagged variable. Every variable must have a real value, not a placeholder.
-- **Plugin not listed after install**: run `/reload-plugins`. If still missing, run `/plugin marketplace update rill-plugins` to refresh the catalog, then re-run `/plugin install rill@rill-plugins`.
+- **Plugin not listed after install**: run `/reload-plugins`. If still missing, run `/plugin marketplace update claude-plugins` to refresh the catalog, then re-run `/plugin install rill-make@claude-plugins`.
 
 ## References
 

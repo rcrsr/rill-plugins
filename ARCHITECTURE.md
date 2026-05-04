@@ -1,6 +1,6 @@
-# rill plugin architecture
+# rill-make plugin architecture
 
-Plugin-maintainer reference for the `rill` Claude Code plugin. Read this before modifying agents, skill phases, or the blueprint schema.
+Plugin-maintainer reference for the `rill-make` Claude Code plugin. Read this before modifying agents, skill phases, or the blueprint schema.
 
 ## Goals
 
@@ -43,7 +43,7 @@ create-rill-package (skill, orchestrator)
 **Inputs:**
 - Frozen blueprint at `<package>/.rill-design/blueprint.md`
 - Rill language reference (passed by skill or fetched)
-- Templates from `rill/skills/create-rill-package/templates/`
+- Templates from `skills/create-rill-package/templates/`
 
 **Output:** package files at the canonical layout.
 
@@ -174,7 +174,7 @@ Phase 8:  review and deliver           (skill)
 
 ### Adding a new domain agent
 
-1. Create `rill/agents/<role>.md` with a focused description and minimal-context tool list.
+1. Create `agents/<role>.md` with a focused description and minimal-context tool list.
 2. Add a section above describing its scope and inputs/outputs.
 3. Add a phase to `SKILL.md` that delegates with a self-contained prompt (the agent gets no conversation history).
 4. If the new agent produces an artifact other agents consume, document it in the blueprint schema or as a sibling artifact in `<package>/.rill-design/`.

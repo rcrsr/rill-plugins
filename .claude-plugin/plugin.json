@@ -1,7 +1,7 @@
 {
-  "name": "rill",
+  "name": "rill-make",
   "description": "Rill package authoring skill and engineer agent",
-  "version": "0.10.0",
+  "version": "0.19.0",
   "author": {
     "name": "Andre Bremer"
   }
