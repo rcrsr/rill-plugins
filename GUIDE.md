@@ -31,9 +31,9 @@ The skill in this plugin generates the package. `rill-agent` (separate repo) run
 
 The skill halts if any of these are missing.
 
-### 1.1 Linux, MacOS or WSL2
+### 1.1 Linux, macOS or WSL2
 
-The rill toolkit targets Posix (Linux, MacOS). On Windows, use WSL2. On Windows, install WSL2: run `wsl --install` in an elevated PowerShell, then reboot.
+The rill toolkit targets Posix (Linux, macOS). On Windows, use WSL2. On Windows, install WSL2: run `wsl --install` in an elevated PowerShell, then reboot.
 
 ### 1.2 Node.js 22 LTS or newer
 
